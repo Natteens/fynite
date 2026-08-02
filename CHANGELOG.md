@@ -1,3 +1,10 @@
+# [0.7.0](https://github.com/Natteens/fynite/compare/v0.6.0...v0.7.0) (2026-08-02)
+
+
+### Features
+
+* Move state authoring to Graph Inspector ([19fde5a](https://github.com/Natteens/fynite/commit/19fde5a1eb19c5ea5101e84733e7560623366593))
+
 # [0.6.0](https://github.com/Natteens/fynite/compare/v0.5.0...v0.6.0) (2026-08-02)
 
 
