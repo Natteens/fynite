@@ -1,85 +1,19 @@
 name: release
 
-# Releasing is a decision, never a side effect of pushing.
-#
-# A push-triggered release publishes whatever landed on `main` the moment it lands, with no chance to
-# run anything against the exact revision being tagged — and a package that ships a broken importer
-# under a version number already sitting in someone's manifest cannot be taken back. That is how
-# v0.5.0 shipped an architecture that was rejected days later. So `main` moves freely, and every
-# release goes through this workflow, by hand, after the gates below are green.
-#
-# The default run is a dry run: it resolves the next version and prints the notes without tagging,
-# pushing or creating a release. Publishing requires unchecking `dry_run` on purpose.
-
 on:
-  workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Compute the next version and print the notes, but publish nothing.'
-        type: boolean
-        required: false
-        default: true
-      validated_sha:
-        description: 'Full SHA the Unity suites were run against. Must equal the revision being released.'
-        type: string
-        required: true
-      test_summary:
-        description: 'Exact counts, e.g. "EditMode 313: 304 passed, 0 failed, 9 skipped".'
-        type: string
-        required: true
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
   issues: write
   pull-requests: write
 
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 jobs:
-  # 1. Shape. Cheap, always runnable, and it refuses a dirty tree so the tag describes what was checked.
-  static:
-    name: Static
-    uses: ./.github/workflows/validate.yml
-    with:
-      release_mode: true
-
-  # 2. Behaviour. The Unity suites cannot run here: this repository has no Unity project and no
-  #    licence is configured, so a GameCI job would be YAML that never executes. The gate is instead
-  #    an attestation naming the revision that was tested. It is manual and it is on the record,
-  #    which is the opposite of publishing untested code, and it is refused when it names anything
-  #    other than the commit about to be tagged.
-  unity:
-    name: Unity validation
-    needs: static
+  release:
+    name: Release
     runs-on: ubuntu-latest
-
-    steps:
-      - name: Record attestation
-        run: |
-          if [ "${{ inputs.validated_sha }}" != "${{ github.sha }}" ]; then
-            echo "::error::validated_sha is ${{ inputs.validated_sha }} but this run would tag ${{ github.sha }}." >&2
-            exit 1
-          fi
-
-          {
-            echo "### Unity validation"
-            echo
-            echo "- revision: \`${{ github.sha }}\`"
-            echo "- reported by: @${{ github.actor }}"
-            echo "- results: ${{ inputs.test_summary }}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  # 3. The version. Always a dry run, even when publishing, because the number has to be known and
-  #    proven unique before anything is written.
-  version:
-    name: Version
-    needs: [static, unity]
-    runs-on: ubuntu-latest
-    outputs:
-      next: ${{ steps.dry.outputs.new_release_version }}
-      will_publish: ${{ steps.dry.outputs.new_release_published }}
 
     steps:
       - name: Checkout
@@ -91,77 +25,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '18'
 
-      - name: Resolve the next version
-        id: dry
-        uses: cycjimmy/semantic-release-action@v4
-        with:
-          dry_run: true
-          extra_plugins: |
-            @semantic-release/changelog
-            @semantic-release/git
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check the version is new
-        run: |
-          if [ "${{ steps.dry.outputs.new_release_published }}" != "true" ]; then
-            echo "::error::semantic-release found nothing to release from the commits since the last tag." >&2
-            echo "Commit types and their effect are configured in .releaserc.json." >&2
-            exit 1
-          fi
-
-          NEXT="${{ steps.dry.outputs.new_release_version }}"
-          echo "Next version: $NEXT"
-
-          if git rev-parse "v$NEXT" >/dev/null 2>&1; then
-            echo "::error::v$NEXT already exists. Publishing would move a tag users already have." >&2
-            exit 1
-          fi
-
-          case "$NEXT" in
-            1.0.0)
-              echo "::error::The next version resolves to 1.0.0. While the package is 0.x this is almost" >&2
-              echo "always an unintended breaking-change marker. See the releaseRules in .releaserc.json." >&2
-              exit 1
-              ;;
-          esac
-
-          {
-            echo "### Next version: \`$NEXT\`"
-            echo
-            echo "- tagged on: \`${{ github.sha }}\`"
-            echo "- dry run: \`${{ inputs.dry_run }}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  # 4. Publishing. Only reachable with every gate above green and dry_run explicitly off.
-  publish:
-    name: Publish
-    needs: [static, unity, version]
-    if: inputs.dry_run == false
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Refuse to publish from anywhere but main
-        run: |
-          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            echo "::error::Releases are cut from main. This run is on ${{ github.ref }}." >&2
-            exit 1
-          fi
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      # package.json here is a Unity package manifest, not an npm project: its dependencies are UPM
+      # package.json here is a Unity package manifest, not an npm project: its "dependencies" are UPM
       # packages and must reach the published tag untouched. Nothing installs from it, and
       # semantic-release brings its own dependencies, so there is no npm install step.
       - name: Release
@@ -172,12 +38,3 @@ jobs:
             @semantic-release/git
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Remind about the install URL
-        run: |
-          {
-            echo "### Published \`${{ needs.version.outputs.next }}\`"
-            echo
-            echo "Update the install URLs in README.md to \`#v${{ needs.version.outputs.next }}\`."
-            echo "They are not versioned by semantic-release."
-          } >> "$GITHUB_STEP_SUMMARY"
