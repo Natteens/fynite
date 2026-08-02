@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/Natteens/fynite/compare/v0.4.0...v0.5.0) (2026-08-02)
+
+
+### Features
+
+* Add state scope editor and authoring ops ([1afb8db](https://github.com/Natteens/fynite/commit/1afb8db4e9bbce28414e6ca9360c7689807b24ed))
+
 # [0.4.0](https://github.com/Natteens/fynite/compare/v0.3.0...v0.4.0) (2026-08-02)
 
 
