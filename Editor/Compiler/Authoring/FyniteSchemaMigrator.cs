@@ -73,6 +73,9 @@ namespace Fynite.Authoring
                     case 1:
                         MigrateFrom1To2(document);
                         break;
+                    case 2:
+                        MigrateFrom2To3(document);
+                        break;
                     default:
                         // Nothing knows how to move forward from here; stop rather than loop.
                         return document.schemaVersion != from;
@@ -109,6 +112,23 @@ namespace Fynite.Authoring
             }
 
             document.schemaVersion = 2;
+        }
+
+        /// <summary>
+        /// Version 3 moved the context type out of a node and onto the graph, and made the root its own
+        /// node kind instead of a flag on a state.
+        /// </summary>
+        /// <remarks>
+        /// Both changes are at the graph layer, not in the document: a version 2 document already
+        /// carries the context on the document and the root as <c>isRoot</c>, and both keep exactly the
+        /// meaning they had. So the only thing to do here is record that the document has been read by a
+        /// build that understands the new arrangement. The work of rewriting a version 2 <em>graph</em>
+        /// — dropping the settings node and turning the flagged state into a root node — is done by
+        /// <c>FyniteGraphMigration</c>, which is the only place that can see nodes at all.
+        /// </remarks>
+        private static void MigrateFrom2To3(FyniteGraphDocument document)
+        {
+            document.schemaVersion = 3;
         }
     }
 }

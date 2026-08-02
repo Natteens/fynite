@@ -59,6 +59,9 @@ namespace Fynite.GraphEditor
         public void AssignNewFyniteGuid() => m_FyniteGuid = FyniteGuids.New();
 
         /// <inheritdoc />
+        public void AdoptFyniteGuid(string guid) => m_FyniteGuid = guid;
+
+        /// <inheritdoc />
         public void EnsureFyniteGuid()
         {
             if (string.IsNullOrEmpty(m_FyniteGuid))

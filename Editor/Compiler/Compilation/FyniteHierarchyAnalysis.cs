@@ -80,6 +80,7 @@ namespace Fynite.Authoring
 
             if (states.Count == 0)
             {
+                AddRootMissing(diagnostics);
                 return analysis;
             }
 
@@ -130,11 +131,7 @@ namespace Fynite.Authoring
 
             if (root == null)
             {
-                diagnostics.Add(new FyniteDiagnostic(
-                    FyniteDiagnosticCodes.RootMissing,
-                    FyniteDiagnosticSeverity.Error,
-                    FyniteDiagnosticCategory.Hierarchy,
-                    "No state is marked as the root. Mark the state that owns the whole hierarchy."));
+                AddRootMissing(diagnostics);
                 return null;
             }
 
@@ -161,6 +158,14 @@ namespace Fynite.Authoring
 
             return root;
         }
+
+        private static void AddRootMissing(List<FyniteDiagnostic> diagnostics) =>
+            diagnostics.Add(new FyniteDiagnostic(
+                FyniteDiagnosticCodes.RootMissing,
+                FyniteDiagnosticSeverity.Error,
+                FyniteDiagnosticCategory.Hierarchy,
+                "This graph has no Root node, so it has no hierarchy to run. Add one from the create " +
+                "menu under Fynite / Root."));
 
         private static Dictionary<string, List<FyniteStateDocument>> BuildChildren(
             List<FyniteStateDocument> states,

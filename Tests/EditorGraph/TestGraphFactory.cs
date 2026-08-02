@@ -51,18 +51,14 @@ namespace Fynite.Tests
         {
             var graph = FyniteGraphCreation.Create(path);
 
-            FyniteNodeOptions.Set(
-                graph.FindSettings(), FyniteConfigNode.ContextScriptOption, ScriptOf<GraphTestContext>());
+            graph.SetContextType(typeof(GraphTestContext));
 
-            var root = graph.GetNodes().OfType<FyniteStateNode>().First();
-            root.SetDisplayName("Root");
-            FyniteNodeOptions.Set(root, FyniteStateNode.RootOption, true);
-
+            var root = graph.FindRoot();
             var idle = AddState(graph, root, "Idle", new Vector2(320f, -120f), initial: true);
             var moving = AddState(graph, root, "Moving", new Vector2(320f, 120f), initial: false);
 
-            AddBlock<FyniteTickActionNode, GraphTestTickAction>(root);
-            AddBlock<FyniteFixedTickActionNode, GraphTestFixedAction>(root);
+            AddBlock<FyniteTickActionNode, GraphTestTickAction>(idle);
+            AddBlock<FyniteFixedTickActionNode, GraphTestFixedAction>(idle);
 
             AddConfiguredBlock<FyniteEnterActionNode>(idle, "label", "idleEnter");
             AddConfiguredBlock<FyniteExitActionNode>(idle, "label", "idleExit");
@@ -98,6 +94,26 @@ namespace Fynite.Tests
                     parent.GetOutputPortByName(FyniteStateNode.ChildrenPort),
                     state.GetInputPortByName(FyniteStateNode.ParentPort));
             }
+
+            if (initial)
+            {
+                FyniteNodeOptions.Set(state, FyniteStateNode.InitialOption, true);
+            }
+
+            return state;
+        }
+
+        internal static FyniteStateNode AddState(
+            FyniteGraph graph, FyniteRootStateNode parent, string name, Vector2 position, bool initial)
+        {
+            var state = new FyniteStateNode();
+            graph.AddNode(state);
+            state.SetDisplayName(name);
+            state.Position = position;
+
+            graph.Connect(
+                parent.GetOutputPortByName(FyniteRootStateNode.ChildrenPort),
+                state.GetInputPortByName(FyniteStateNode.ParentPort));
 
             if (initial)
             {

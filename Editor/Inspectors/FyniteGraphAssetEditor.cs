@@ -52,7 +52,7 @@ namespace Fynite.Editor
             }
 
             EditorGUILayout.LabelField("Compiled graph", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("Context", asset.ContextType != null ? asset.ContextType.FullName : "<unknown>");
+            EditorGUILayout.LabelField("Expected Context", asset.ContextType != null ? asset.ContextType.FullName : "<unknown>");
             EditorGUILayout.LabelField("Root", definition.GetStateName(definition.Root));
             EditorGUILayout.LabelField("States", definition.StateCount.ToString());
             EditorGUILayout.LabelField("Signals", definition.SignalCount.ToString());

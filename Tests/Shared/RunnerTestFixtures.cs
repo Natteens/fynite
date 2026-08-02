@@ -34,6 +34,33 @@ namespace Fynite.Tests
     {
     }
 
+    public interface IRunnerTestContext
+    {
+    }
+
+    public sealed class RunnerInterfaceContextA : MonoBehaviour, IRunnerTestContext
+    {
+    }
+
+    public sealed class RunnerInterfaceContextB : MonoBehaviour, IRunnerTestContext
+    {
+    }
+
+    public sealed class RunnerInterfaceDefinitionAsset : FyniteDefinitionAsset<IRunnerTestContext>
+    {
+        private static readonly FyniteDefinition<IRunnerTestContext> Compiled = Create();
+
+        public override FyniteDefinition<IRunnerTestContext> GetDefinition() => Compiled;
+
+        private static FyniteDefinition<IRunnerTestContext> Create()
+        {
+            var builder = new FyniteBuilder<IRunnerTestContext>();
+            var root = builder.AddState("Root");
+            builder.SetRoot(root);
+            return builder.Build();
+        }
+    }
+
     /// <summary>
     /// A hand-written definition asset. The future <c>.fyn</c> importer will emit something equivalent;
     /// nothing downstream of this boundary needs to change when it does.

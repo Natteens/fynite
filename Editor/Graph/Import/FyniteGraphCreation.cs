@@ -1,6 +1,7 @@
 using System.IO;
 using Unity.GraphToolkit.Editor;
 using UnityEditor;
+using UnityEditor.ProjectWindowCallback;
 using UnityEngine;
 
 namespace Fynite.GraphEditor
@@ -17,12 +18,21 @@ namespace Fynite.GraphEditor
         [MenuItem("Assets/Create/Fynite/Fynite Graph", false, 80)]
         private static void CreateFromMenu()
         {
-            GraphDatabase.PromptInProjectBrowserToCreateNewAsset<FyniteGraph>("New Fynite Graph");
+            // Graph Toolkit's prompt creates and saves an empty graph directly. That bypasses
+            // InitializeNewGraph(), so the menu used to produce a different file from Create(). Keep
+            // Unity's familiar in-project rename interaction, but route the completed name through the
+            // same public factory every other caller uses.
+            ProjectWindowUtil.StartNameEditingIfProjectWindowExists(
+                EntityId.None,
+                ScriptableObject.CreateInstance<CreateFyniteGraphEndNameEditAction>(),
+                "New Fynite Graph" + FyniteGraph.DottedExtension,
+                EditorGUIUtility.IconContent("ScriptableObject Icon").image as Texture2D,
+                null);
         }
 
         /// <summary>
-        /// Creates a graph file at a path, already carrying an identity, a schema version, a settings
-        /// node and a root state.
+        /// Creates a graph file at a path, already carrying an identity, the current schema and one
+        /// structural root.
         /// </summary>
         /// <param name="assetPath">Project-relative path ending in <c>.fyn</c>.</param>
         /// <returns>The created graph, still open for further edits.</returns>
@@ -45,19 +55,45 @@ namespace Fynite.GraphEditor
                 AssetDatabase.Refresh();
             }
 
-            var graph = GraphDatabase.CreateGraph<FyniteGraph>(assetPath);
+            FyniteGraph graph = null;
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                // Defer Asset Database observation until the Graph Toolkit container already carries
+                // its required metadata and Root. Without this scope CreateGraph imports the empty
+                // container once before InitializeNewGraph gets a chance to run.
+                graph = GraphDatabase.CreateGraph<FyniteGraph>(assetPath);
+                if (graph != null)
+                {
+                    graph.InitializeNewGraph();
+                    GraphDatabase.SaveGraph(graph);
+                }
+            }
+            finally
+            {
+                AssetDatabase.StopAssetEditing();
+            }
+
             if (graph == null)
             {
                 return null;
             }
 
-            graph.InitializeNewGraph();
-            GraphDatabase.SaveGraph(graph);
-
-            // The file was just rewritten with the initial content, so the compiled asset has to come
-            // from that content rather than from the empty graph the create call first wrote.
-            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             return graph;
+        }
+
+        /// <summary>Finishes the Assets/Create rename operation through <see cref="Create"/>.</summary>
+        private sealed class CreateFyniteGraphEndNameEditAction : AssetCreationEndAction
+        {
+            public override void Action(EntityId entityId, string pathName, string resourceFile)
+            {
+                var graph = Create(pathName);
+                if (graph != null)
+                {
+                    ProjectWindowUtil.ShowCreatedAsset(AssetDatabase.LoadMainAssetAtPath(pathName));
+                }
+            }
         }
 
         /// <summary>Saves a graph and recompiles the asset it produces.</summary>

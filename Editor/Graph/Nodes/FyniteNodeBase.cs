@@ -34,6 +34,9 @@ namespace Fynite.GraphEditor
         public void AssignNewFyniteGuid() => m_FyniteGuid = FyniteGuids.New();
 
         /// <inheritdoc />
+        public void AdoptFyniteGuid(string guid) => m_FyniteGuid = guid;
+
+        /// <inheritdoc />
         public void EnsureFyniteGuid()
         {
             if (string.IsNullOrEmpty(m_FyniteGuid))
@@ -58,6 +61,15 @@ namespace Fynite.GraphEditor
 
         /// <summary>Issues a fresh identity, discarding the current one.</summary>
         void AssignNewFyniteGuid();
+
+        /// <summary>
+        /// Takes over an existing identity.
+        /// </summary>
+        /// <remarks>
+        /// Only migration does this, and only to carry a node's identity across a change of node kind so
+        /// that everything referring to it still refers to the same thing.
+        /// </remarks>
+        void AdoptFyniteGuid(string guid);
 
         /// <summary>Issues an identity only if there is none.</summary>
         void EnsureFyniteGuid();

@@ -3,7 +3,8 @@
   "rootNamespace": "Fynite.Editor",
   "references": [
     "Fynite",
-    "Fynite.Core"
+    "Fynite.Core",
+    "Fynite.Editor.Compiler"
   ],
   "includePlatforms": [
     "Editor"

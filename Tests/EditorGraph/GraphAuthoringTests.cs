@@ -25,8 +25,10 @@ namespace Fynite.Tests
 
             Assert.IsNotNull(graph.GraphGuid, "a new graph has an identity immediately");
             Assert.AreEqual(FyniteGraphDocument.CurrentSchemaVersion, graph.SchemaVersion);
-            Assert.IsNotNull(graph.FindSettings(), "a settings node is created so the context can be chosen");
-            Assert.AreEqual(1, graph.GetNodes().OfType<FyniteStateNode>().Count(), "a root state is created");
+            Assert.IsFalse(graph.ContextTypeReference.IsSet, "context starts pending in graph metadata");
+            Assert.AreEqual(1, graph.GetNodes().OfType<FyniteRootStateNode>().Count(), "one structural root is created");
+            Assert.AreEqual(0, graph.GetNodes().OfType<FyniteStateNode>().Count(), "no executable state is invented");
+            Assert.AreEqual(0, graph.GetNodes().OfType<FyniteConfigNode>().Count(), "settings are not represented on the canvas");
 
             var document = FyniteGraphProjection.ToDocument(graph);
             var result = FyniteGraphCompiler.Compile(document);
@@ -198,8 +200,7 @@ namespace Fynite.Tests
             var path = TestGraphFactory.NewPath("validation");
             var graph = TestGraphFactory.CreateReferenceGraph(path);
 
-            var root = graph.GetNodes().OfType<FyniteStateNode>().First(s => s.IsRoot);
-            FyniteNodeOptions.Set(root, FyniteStateNode.RootOption, false);
+            graph.RemoveNode(graph.FindRoot());
 
             var document = FyniteGraphProjection.ToDocument(graph);
             var result = FyniteGraphCompiler.Compile(document);

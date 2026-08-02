@@ -2,6 +2,7 @@ using System;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEditor;
 using Object = UnityEngine.Object;
 
 namespace Fynite.Tests
@@ -244,6 +245,145 @@ namespace Fynite.Tests
             {
                 Object.DestroyImmediate(asset);
             }
+        }
+
+        [Test]
+        public void AutoSerializesTheOnlyCompatibleLocalComponent()
+        {
+            var runner = _gameObject.AddComponent<FyniteRunner>();
+            var context = _gameObject.AddComponent<RunnerTestContext>();
+            var asset = ScriptableObject.CreateInstance<RunnerTestDefinitionAsset>();
+
+            try
+            {
+                Configure(runner, asset, false, null);
+                Assert.AreSame(context, runner.Context);
+                Assert.IsFalse(runner.ContextOverride);
+            }
+            finally
+            {
+                Object.DestroyImmediate(asset);
+            }
+        }
+
+        [Test]
+        public void AutoLeavesContextEmptyWhenThereIsNoCompatibleComponent()
+        {
+            var runner = _gameObject.AddComponent<FyniteRunner>();
+            var asset = ScriptableObject.CreateInstance<RunnerTestDefinitionAsset>();
+
+            try
+            {
+                Configure(runner, asset, false, null);
+                Assert.IsNull(runner.Context);
+            }
+            finally
+            {
+                Object.DestroyImmediate(asset);
+            }
+        }
+
+        [Test]
+        public void AutoKeepsAnExplicitLocalChoiceWhenSeveralAreCompatible()
+        {
+            var runner = _gameObject.AddComponent<FyniteRunner>();
+            _gameObject.AddComponent<RunnerTestContext>();
+            var selected = _gameObject.AddComponent<RunnerTestContext>();
+            var asset = ScriptableObject.CreateInstance<RunnerTestDefinitionAsset>();
+
+            try
+            {
+                Configure(runner, asset, false, selected);
+                Assert.AreSame(selected, runner.Context);
+            }
+            finally
+            {
+                Object.DestroyImmediate(asset);
+            }
+        }
+
+        [Test]
+        public void InterfaceAutoSupportsOneAndSeveralImplementations()
+        {
+            var runner = _gameObject.AddComponent<FyniteRunner>();
+            var first = _gameObject.AddComponent<RunnerInterfaceContextA>();
+            var asset = ScriptableObject.CreateInstance<RunnerInterfaceDefinitionAsset>();
+
+            try
+            {
+                Configure(runner, asset, false, null);
+                Assert.AreSame(first, runner.Context, "one implementation resolves automatically");
+
+                var second = _gameObject.AddComponent<RunnerInterfaceContextB>();
+                Configure(runner, asset, false, second);
+                Assert.AreSame(second, runner.Context, "with several implementations the explicit local choice is kept");
+            }
+            finally
+            {
+                Object.DestroyImmediate(asset);
+            }
+        }
+
+        [Test]
+        public void OverrideMayUseAnotherGameObjectAndDisablingItReturnsToLocalAuto()
+        {
+            var other = new GameObject("external-context");
+            var runner = _gameObject.AddComponent<FyniteRunner>();
+            var local = _gameObject.AddComponent<RunnerTestContext>();
+            var external = other.AddComponent<RunnerTestContext>();
+            var asset = ScriptableObject.CreateInstance<RunnerTestDefinitionAsset>();
+
+            try
+            {
+                Configure(runner, asset, true, external);
+                Assert.AreSame(external, runner.Context);
+                Assert.IsTrue(runner.ContextOverride);
+
+                Configure(runner, asset, false, external);
+                Assert.AreSame(local, runner.Context);
+                Assert.IsFalse(runner.ContextOverride);
+            }
+            finally
+            {
+                Object.DestroyImmediate(asset);
+                Object.DestroyImmediate(other);
+            }
+        }
+
+        [Test]
+        public void ChangingDefinitionInvalidatesAnIncompatibleSerializedContext()
+        {
+            var runner = _gameObject.AddComponent<FyniteRunner>();
+            var concrete = _gameObject.AddComponent<RunnerTestContext>();
+            var first = ScriptableObject.CreateInstance<RunnerTestDefinitionAsset>();
+            var second = ScriptableObject.CreateInstance<RunnerInterfaceDefinitionAsset>();
+
+            try
+            {
+                Configure(runner, first, false, concrete);
+                Assert.AreSame(concrete, runner.Context);
+                Configure(runner, second, false, concrete);
+                Assert.IsNull(runner.Context);
+            }
+            finally
+            {
+                Object.DestroyImmediate(first);
+                Object.DestroyImmediate(second);
+            }
+        }
+
+        private static void Configure(
+            FyniteRunner runner, FyniteDefinitionAsset definition, bool useOverride, MonoBehaviour context)
+        {
+            var serialized = new SerializedObject(runner);
+            serialized.FindProperty("definition").objectReferenceValue = definition;
+            serialized.FindProperty("contextOverride").boolValue = useOverride;
+            serialized.FindProperty("context").objectReferenceValue = context;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            typeof(FyniteRunner)
+                .GetMethod("OnValidate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(runner, null);
         }
     }
 }

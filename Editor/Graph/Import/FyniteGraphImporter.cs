@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Fynite.Authoring;
 using Unity.GraphToolkit.Editor;
@@ -34,7 +35,7 @@ namespace Fynite.GraphEditor
         /// Bumping this reimports every graph in the project, and must be bumped whenever a change to
         /// the compiler alters what a given file compiles to.
         /// </summary>
-        private const int ImporterVersion = 5;
+        private const int ImporterVersion = 6;
 
         /// <summary>Identifier of the compiled asset inside the imported file. Never change it.</summary>
         public const string MainObjectIdentifier = "FyniteGraphAsset";
@@ -67,6 +68,21 @@ namespace Fynite.GraphEditor
                 return;
             }
 
+            // An older graph is brought up to the current shape on the copy that was just loaded, so it
+            // compiles to what it means rather than to what it used to say. Nothing is written back: the
+            // file is rewritten only when the user opens the graph and saves it.
+            FyniteGraphMigrationResult migration;
+            try
+            {
+                migration = FyniteGraphMigration.Apply(graph);
+            }
+            catch (Exception exception)
+            {
+                Fail(ctx, asset, graph.GraphGuid, graph.SchemaVersion,
+                    "The graph could not be migrated to the current format: " + exception.Message);
+                return;
+            }
+
             FyniteGraphDocument document;
             try
             {
@@ -79,35 +95,21 @@ namespace Fynite.GraphEditor
                 return;
             }
 
+            Log(ctx, asset, migration.Diagnostics);
+
             // A file that was just created, or whose context has not been chosen yet, is a normal step on
             // the way to a graph rather than a mistake. It still produces a deliberately non-runnable
             // asset carrying the reason, but it does not fill the console with import errors for a file
             // the user is halfway through setting up. Every other problem is reported below.
-            if (IsUnauthored(document))
+            var pending = DescribePendingConfiguration(document);
+            if (pending != null)
             {
-                asset.SetCompilationFailed(
-                    "This graph is not ready to run yet: open it and give it a root state and a context type.",
-                    document.graphGuid,
-                    document.schemaVersion);
+                asset.SetCompilationFailed(pending, document.graphGuid, document.schemaVersion);
                 return;
             }
 
             var result = FyniteGraphCompiler.Compile(document);
-
-            for (int i = 0; i < result.Diagnostics.Count; i++)
-            {
-                var diagnostic = result.Diagnostics[i];
-                var message = Describe(diagnostic);
-
-                if (diagnostic.IsError)
-                {
-                    ctx.LogImportError(message, asset);
-                }
-                else
-                {
-                    ctx.LogImportWarning(message, asset);
-                }
-            }
+            Log(ctx, asset, result.Diagnostics);
 
             if (!result.Succeeded)
             {
@@ -123,10 +125,43 @@ namespace Fynite.GraphEditor
             ctx.DependsOnCustomDependency(FyniteImportDependencies.ScriptsDependency);
         }
 
-        /// <summary>True when the graph has not been set up far enough to be worth compiling.</summary>
-        private static bool IsUnauthored(FyniteGraphDocument document) =>
-            !document.contextType.IsSet ||
-            (document.states.Count == 0 && document.signals.Count == 0 && document.reactions.Count == 0);
+        /// <summary>
+        /// Says why the graph is not worth compiling yet, or null when it is.
+        /// </summary>
+        /// <remarks>
+        /// A graph missing its context type is not broken, it is unfinished, and the two deserve
+        /// different treatment. The asset still refuses to run and still says why, but the console stays
+        /// quiet: the one place that reports a missing context is the graph itself, so opening it shows
+        /// the problem exactly once instead of once per import and once per save.
+        /// </remarks>
+        private static string DescribePendingConfiguration(FyniteGraphDocument document)
+        {
+            if (!document.contextType.IsSet)
+            {
+                return "This graph has no Context Type yet. Select the graph in the Project window and " +
+                       "choose one; the runner then resolves the instance on its own GameObject.";
+            }
+
+            return null;
+        }
+
+        private static void Log(AssetImportContext ctx, FyniteGraphAsset asset, IReadOnlyList<FyniteDiagnostic> diagnostics)
+        {
+            for (int i = 0; i < diagnostics.Count; i++)
+            {
+                var diagnostic = diagnostics[i];
+                var message = Describe(diagnostic);
+
+                if (diagnostic.IsError)
+                {
+                    ctx.LogImportError(message, asset);
+                }
+                else
+                {
+                    ctx.LogImportWarning(message, asset);
+                }
+            }
+        }
 
         private static void Fail(AssetImportContext ctx, FyniteGraphAsset asset, string graphGuid, int schemaVersion, string message)
         {

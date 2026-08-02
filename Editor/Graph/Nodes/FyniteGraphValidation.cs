@@ -14,79 +14,96 @@ namespace Fynite.GraphEditor
     /// came from. What the user sees while editing is therefore exactly what the importer will decide.
     /// </para>
     /// <para>
-    /// Findings that belong to a block are raised on the block node itself, and findings about the graph
-    /// as a whole land on the settings node so they are visible on the canvas rather than only in a log.
+    /// Findings that belong to a block are raised on the block node itself. Findings about the graph as a
+    /// whole — a missing context type, a schema that cannot be read — are raised on the graph, because
+    /// that is where the thing they are about actually lives now: attaching them to some node would point
+    /// the user at a node they cannot fix them from.
     /// </para>
     /// </remarks>
     public static class FyniteGraphValidation
     {
         /// <summary>Validates a graph and reports through Graph Toolkit's logger.</summary>
-        public static void Report(FyniteGraph graph, GraphLogger logger)
+        public static void Report(FyniteGraph graph, GraphLogger logger) =>
+            Report(graph, logger, FyniteGraphMigrationResult.None);
+
+        /// <summary>Validates a graph, also reporting what a migration pass had to say.</summary>
+        public static void Report(FyniteGraph graph, GraphLogger logger, FyniteGraphMigrationResult migration)
         {
+            var byGuid = IndexNodes(graph);
+
+            if (migration != null)
+            {
+                for (int i = 0; i < migration.Diagnostics.Count; i++)
+                {
+                    Emit(migration.Diagnostics[i], byGuid, logger);
+                }
+            }
+
+            ReportStructuralProblems(graph, logger);
+
             var document = FyniteGraphProjection.ToDocument(graph);
             var result = FyniteGraphCompiler.Compile(document);
 
-            var byGuid = IndexNodes(graph);
-            var settings = graph.FindSettings();
-
-            ReportStructuralProblems(graph, settings, logger);
-
             for (int i = 0; i < result.Diagnostics.Count; i++)
             {
-                var diagnostic = result.Diagnostics[i];
-                object context = null;
+                Emit(result.Diagnostics[i], byGuid, logger);
+            }
+        }
 
-                if (!string.IsNullOrEmpty(diagnostic.ElementGuid))
-                {
-                    byGuid.TryGetValue(diagnostic.ElementGuid, out context);
-                }
+        private static void Emit(FyniteDiagnostic diagnostic, Dictionary<string, object> byGuid, GraphLogger logger)
+        {
+            object context = null;
 
-                context = context ?? settings;
+            if (!string.IsNullOrEmpty(diagnostic.ElementGuid))
+            {
+                byGuid.TryGetValue(diagnostic.ElementGuid, out context);
+            }
 
-                var message = diagnostic.Code + ": " + diagnostic.Message;
+            var message = diagnostic.Code + ": " + diagnostic.Message;
 
-                if (diagnostic.IsError)
-                {
-                    logger.LogError(message, context);
-                }
-                else
-                {
-                    logger.LogWarning(message, context);
-                }
+            if (diagnostic.IsError)
+            {
+                logger.LogError(message, context);
+            }
+            else
+            {
+                logger.LogWarning(message, context);
             }
         }
 
         /// <summary>
         /// Reports the problems that only exist at the visual layer, which the document cannot express.
         /// </summary>
-        private static void ReportStructuralProblems(FyniteGraph graph, FyniteConfigNode settings, GraphLogger logger)
+        private static void ReportStructuralProblems(FyniteGraph graph, GraphLogger logger)
         {
-            FyniteConfigNode first = null;
-            int settingsCount = 0;
+            FyniteRootStateNode firstRoot = null;
 
             foreach (var node in graph.GetNodes())
             {
-                if (node is FyniteConfigNode config)
+                if (node is FyniteRootStateNode root)
                 {
-                    settingsCount++;
-                    if (first == null)
+                    // The compiler reports two roots as well, from the document. Saying it here too is
+                    // what puts the message on the extra node rather than only on the graph, so the user
+                    // can see which one to delete.
+                    if (firstRoot == null)
                     {
-                        first = config;
+                        firstRoot = root;
                     }
                     else
                     {
                         logger.LogError(
-                            "A graph has one settings node. Delete this one and use '" + first.Title + "'.",
-                            config);
+                            "A machine has one root. Delete this node and connect its children to the " +
+                            "other root instead.",
+                            root);
                     }
+                }
 
-                    if (config.HasUnresolvedContextScript())
-                    {
-                        logger.LogError(
-                            "The selected context script declares no type Unity can load. A script defines a " +
-                            "type only when the file is named after the class it contains.",
-                            config);
-                    }
+                if (node is FyniteConfigNode legacy)
+                {
+                    logger.LogError(
+                        "This is a settings node from an older Fynite. The context type is now a property " +
+                        "of the graph, edited in the .fyn inspector. Set it there and delete this node.",
+                        legacy);
                 }
 
                 if (node is FyniteSignalNode signal && signal.HasUnresolvedScriptPayload())
@@ -115,12 +132,8 @@ namespace Fynite.GraphEditor
                 }
             }
 
-            if (settingsCount == 0)
-            {
-                logger.LogError(
-                    "This graph has no settings node, so it declares no context type and cannot compile. " +
-                    "Add one from the create menu under Fynite / Graph Settings.");
-            }
+            // Root absence is reported once by the compiler as FYN0401. Reporting it here as well used
+            // to turn one structural defect into an unaddressed message plus the canonical diagnostic.
         }
 
         private static Dictionary<string, object> IndexNodes(FyniteGraph graph)

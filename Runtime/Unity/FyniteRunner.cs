@@ -25,6 +25,10 @@ namespace Fynite
         [SerializeField]
         private MonoBehaviour context;
 
+        [Tooltip("When enabled, Context may reference a compatible component on another GameObject. When disabled, the editor resolves a compatible component on this GameObject.")]
+        [SerializeField]
+        private bool contextOverride;
+
         [Tooltip("Create and start the machine when this component is enabled.")]
         [SerializeField]
         private bool startOnEnable = true;
@@ -66,6 +70,9 @@ namespace Fynite
         /// <summary>The context handed to the machine.</summary>
         public MonoBehaviour Context => context;
 
+        /// <summary>True when authoring explicitly permits a context outside this GameObject.</summary>
+        public bool ContextOverride => contextOverride;
+
         /// <summary>True while the machine exists and has an active path.</summary>
         public bool IsRunning => _machine != null && _machine.IsRunning;
 
@@ -84,6 +91,7 @@ namespace Fynite
 
             definition = newDefinition;
             context = newContext;
+            contextOverride = newContext != null && newContext.gameObject != gameObject;
             _configurationErrorLogged = false;
 
             DisposeMachine();
@@ -154,6 +162,57 @@ namespace Fynite
                 StartMachine();
             }
         }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// Resolves authoring-time Auto context and serializes the result. Player code never performs
+        /// this search: it only validates and consumes the reference written here.
+        /// </summary>
+        private void OnValidate()
+        {
+            var expected = definition != null ? definition.ContextType : null;
+
+            if (contextOverride)
+            {
+                if (context != null && (expected == null || !expected.IsInstanceOfType(context)))
+                {
+                    context = null;
+                }
+
+                return;
+            }
+
+            var local = GetComponents<MonoBehaviour>();
+            MonoBehaviour only = null;
+            int count = 0;
+
+            if (expected != null)
+            {
+                for (int i = 0; i < local.Length; i++)
+                {
+                    if (local[i] == null || !expected.IsInstanceOfType(local[i]))
+                    {
+                        continue;
+                    }
+
+                    only = local[i];
+                    count++;
+                }
+            }
+
+            if (count == 1)
+            {
+                context = only;
+            }
+            else if (context == null || context.gameObject != gameObject ||
+                     expected == null || !expected.IsInstanceOfType(context))
+            {
+                // With several matches, keep an already selected compatible local instance. The
+                // inspector presents the explicit selector; with zero matches, the reference clears.
+                context = null;
+            }
+        }
+#endif
 
         private void Update()
         {

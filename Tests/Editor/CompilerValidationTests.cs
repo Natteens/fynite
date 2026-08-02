@@ -86,7 +86,10 @@ namespace Fynite.Tests
             var document = AuthoringDocumentBuilder.Valid();
             document.states.Clear();
 
-            AssertError(Compile(document), FyniteDiagnosticCodes.GraphEmpty);
+            var result = Compile(document);
+            AssertError(result, FyniteDiagnosticCodes.RootMissing);
+            Assert.AreEqual(1, result.Diagnostics.Count(d => d.Code == FyniteDiagnosticCodes.RootMissing));
+            Assert.IsFalse(result.Diagnostics.Any(d => d.Code == FyniteDiagnosticCodes.GraphEmpty));
         }
 
         [Test]

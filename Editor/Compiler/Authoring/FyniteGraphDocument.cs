@@ -23,7 +23,7 @@ namespace Fynite.Authoring
     public sealed class FyniteGraphDocument
     {
         /// <summary>Schema version this build of Fynite writes and fully understands.</summary>
-        public const int CurrentSchemaVersion = 2;
+        public const int CurrentSchemaVersion = 3;
 
         /// <summary>Oldest schema version that can still be migrated forward.</summary>
         public const int MinimumSupportedSchemaVersion = 1;
@@ -103,7 +103,14 @@ namespace Fynite.Authoring
         /// <summary>Identity of the parent state, or null/empty when the state has no parent.</summary>
         public string parentGuid;
 
-        /// <summary>True for the single state that owns the whole hierarchy.</summary>
+        /// <summary>
+        /// True for the single state that owns the whole hierarchy.
+        /// </summary>
+        /// <remarks>
+        /// From schema version 3 on this is not a flag the user sets. It is what the projection writes
+        /// for the graph's structural root node, which is a different node kind from an ordinary state
+        /// and so cannot be duplicated by ticking a box.
+        /// </remarks>
         public bool isRoot;
 
         /// <summary>True when this state is the one its parent enters by default.</summary>

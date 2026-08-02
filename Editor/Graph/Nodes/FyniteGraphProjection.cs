@@ -35,7 +35,11 @@ namespace Fynite.GraphEditor
             {
                 schemaVersion = graph.SchemaVersion > 0 ? graph.SchemaVersion : FyniteGraphDocument.CurrentSchemaVersion,
                 graphGuid = graph.GraphGuid,
-                contextType = FyniteTypeReference.From(graph.ResolveContextType())
+
+                // Straight off the graph, not looked up from a node. The reference is carried as stored
+                // rather than resolved and re-formatted, so a context type that has gone missing reaches
+                // the compiler as the thing that was selected instead of as nothing at all.
+                contextType = graph.ContextTypeReference
             };
 
             var reactionNodes = new List<FyniteReactionNode>();
@@ -44,6 +48,9 @@ namespace Fynite.GraphEditor
             {
                 switch (node)
                 {
+                    case FyniteRootStateNode root:
+                        document.states.Add(ProjectRoot(root));
+                        break;
                     case FyniteStateNode state:
                         document.states.Add(ProjectState(state));
                         break;
@@ -66,6 +73,27 @@ namespace Fynite.GraphEditor
             return document;
         }
 
+        /// <summary>
+        /// Projects the structural root.
+        /// </summary>
+        /// <remarks>
+        /// The root reaches the compiler as an ordinary state document that happens to be the root,
+        /// because that is what the runtime data needs and the compiler's hierarchy rules are already
+        /// written against it. What has changed is that <c>isRoot</c> is no longer something a user can
+        /// set: it is true here and nowhere else, so two of them can only come from two root nodes,
+        /// which is reported as such.
+        /// </remarks>
+        private static FyniteStateDocument ProjectRoot(FyniteRootStateNode node) =>
+            new FyniteStateDocument
+            {
+                guid = node.FyniteGuid,
+                name = FyniteRootStateNode.RootName,
+                position = node.Position,
+                parentGuid = null,
+                isRoot = true,
+                isInitial = false
+            };
+
         private static FyniteStateDocument ProjectState(FyniteStateNode node)
         {
             var parent = node.ResolveParent();
@@ -76,7 +104,7 @@ namespace Fynite.GraphEditor
                 name = node.StateName,
                 position = node.Position,
                 parentGuid = parent?.FyniteGuid,
-                isRoot = node.IsRoot,
+                isRoot = false,
                 isInitial = node.IsInitial
             };
 

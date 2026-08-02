@@ -138,15 +138,6 @@ namespace Fynite.Authoring
                     "The graph has no persistent identity. External references could not point at it reliably."));
             }
 
-            if (document.states.Count == 0)
-            {
-                diagnostics.Add(new FyniteDiagnostic(
-                    FyniteDiagnosticCodes.GraphEmpty,
-                    FyniteDiagnosticSeverity.Error,
-                    FyniteDiagnosticCategory.Graph,
-                    "The graph declares no states. Add at least a root state."));
-            }
-
             // One namespace for every identity in the graph: a state and a signal must not be able to
             // collide, because a diagnostic addressed to a GUID has to point at exactly one element.
             var seen = new Dictionary<string, IFyniteAuthoringElement>(StringComparer.Ordinal);

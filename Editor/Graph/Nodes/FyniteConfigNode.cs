@@ -1,5 +1,4 @@
 using System;
-using Fynite.Authoring;
 using Unity.GraphToolkit.Editor;
 using UnityEditor;
 using UnityEngine;
@@ -7,36 +6,41 @@ using UnityEngine;
 namespace Fynite.GraphEditor
 {
     /// <summary>
-    /// The graph's settings, as a node so they get a real inspector.
+    /// The settings node graphs used to carry. Kept only so that graphs written with one can still be
+    /// read and migrated.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Graph Toolkit builds inspectors from node options, and offers no hook for adding a panel of the
-    /// graph's own. Putting the settings on a node is what makes them editable at all — and it has the
-    /// side benefit of being visible on the canvas, so a graph missing its context type looks wrong
-    /// rather than merely behaving wrong.
+    /// The context type is a property of the graph, not a step in the flow drawn on the canvas, so a node
+    /// was the wrong place for it: it took up space in the diagram, it could be deleted or duplicated,
+    /// and it made "which node holds the truth" a question at all. It now lives on the graph itself and
+    /// is edited in the <c>.fyn</c> inspector.
     /// </para>
     /// <para>
-    /// Exactly one of these belongs in a graph; the graph creates one when a new file is made and
-    /// reports it when a graph ends up with none or several.
+    /// The class survives because deleting it would make an existing <c>.fyn</c> unreadable — Graph
+    /// Toolkit stores the node's type name in the file, and a node whose class is gone takes its data
+    /// with it, including the context type this is here to recover. It deliberately has no
+    /// <c>[Node]</c> attribute, so it is absent from the create menu and no new one can appear;
+    /// <see cref="FyniteGraphMigration"/> reads the context out of any that are found and then removes
+    /// them.
     /// </para>
     /// </remarks>
     [Serializable]
-    [Node("Fynite/Graph Settings")]
     [UseWithGraph(typeof(FyniteGraph))]
     public sealed class FyniteConfigNode : FyniteNodeBase
     {
-        /// <summary>Option holding the script that declares the context type.</summary>
+        /// <summary>Option the legacy node held the context script in.</summary>
         public const string ContextScriptOption = "contextScript";
 
         /// <inheritdoc />
         public override void OnEnable()
         {
             base.OnEnable();
-            Title = "Fynite Graph";
+            Title = "Fynite Graph (legacy settings)";
+            Subtitle = "migrated to the graph's Context Type";
         }
 
-        /// <summary>The context type this graph compiles against, or null when none is selected.</summary>
+        /// <summary>The context type this legacy node selects, or null when it selects none.</summary>
         public Type ResolveContextType()
         {
             var option = GetNodeOptionByName(ContextScriptOption);
@@ -64,26 +68,12 @@ namespace Fynite.GraphEditor
             return script != null && script.GetClass() == null;
         }
 
-        /// <summary>Refreshes the subtitle so the current context reads off the canvas.</summary>
-        public void RefreshLabels()
-        {
-            var context = ResolveContextType();
-            Subtitle = context != null
-                ? "context: " + context.Name
-                : HasUnresolvedContextScript()
-                    ? "context: <script declares no usable type>"
-                    : "context: <none selected>";
-        }
-
         /// <inheritdoc />
         protected override void OnDefineOptions(IOptionDefinitionContext context)
         {
             context.AddOption<MonoScript>(ContextScriptOption)
                 .WithDisplayName("Context Script")
-                .WithTooltip(
-                    "Script declaring the type every block in this graph works against. A FyniteRunner is " +
-                    "given a component of this type, so it must be a MonoBehaviour or an interface a " +
-                    "component implements.")
+                .WithTooltip("Where this graph's context type used to be chosen. Set it in the .fyn inspector now.")
                 .Build();
         }
     }

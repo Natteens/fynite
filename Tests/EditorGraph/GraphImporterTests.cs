@@ -100,9 +100,7 @@ namespace Fynite.Tests
 
             Assert.IsTrue(AssetDatabase.LoadAssetAtPath<FyniteGraphAsset>(path).IsExecutable);
 
-            // Un-mark the root, which is a graph the compiler must refuse.
-            var root = graph.GetNodes().OfType<FyniteStateNode>().First(s => s.IsRoot);
-            FyniteNodeOptions.Set(root, FyniteStateNode.RootOption, false);
+            graph.RemoveNode(graph.FindRoot());
 
             LogAssert.ignoreFailingMessages = true;
             FyniteGraphCreation.SaveAndReimport(graph);
@@ -122,16 +120,21 @@ namespace Fynite.Tests
             var path = TestGraphFactory.NewPath("fixable");
             var graph = TestGraphFactory.CreateReferenceGraph(path);
 
-            var root = graph.GetNodes().OfType<FyniteStateNode>().First(s => s.IsRoot);
-
             LogAssert.ignoreFailingMessages = true;
-            FyniteNodeOptions.Set(root, FyniteStateNode.RootOption, false);
+            graph.RemoveNode(graph.FindRoot());
             FyniteGraphCreation.SaveAndReimport(graph);
             LogAssert.ignoreFailingMessages = false;
 
             Assert.IsFalse(AssetDatabase.LoadAssetAtPath<FyniteGraphAsset>(path).IsExecutable);
 
-            FyniteNodeOptions.Set(root, FyniteStateNode.RootOption, true);
+            var root = new FyniteRootStateNode();
+            graph.AddNode(root);
+            foreach (var state in graph.GetNodes().OfType<FyniteStateNode>().Where(s => s.ResolveParent() == null).ToList())
+            {
+                graph.Connect(
+                    root.GetOutputPortByName(FyniteRootStateNode.ChildrenPort),
+                    state.GetInputPortByName(FyniteStateNode.ParentPort));
+            }
             FyniteGraphCreation.SaveAndReimport(graph);
 
             var asset = AssetDatabase.LoadAssetAtPath<FyniteGraphAsset>(path);

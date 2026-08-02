@@ -38,9 +38,6 @@ namespace Fynite.GraphEditor
         /// <summary>Port reactions targeting this state connect to.</summary>
         public const string IncomingPort = "Targeted By";
 
-        /// <summary>Option marking this state as the root of the machine.</summary>
-        public const string RootOption = "isRoot";
-
         /// <summary>Option marking this state as the one its parent enters by default.</summary>
         public const string InitialOption = "isInitial";
 
@@ -57,9 +54,6 @@ namespace Fynite.GraphEditor
         /// <inheritdoc />
         public string FyniteGuid => m_FyniteGuid;
 
-        /// <summary>True when this state is marked as the machine's root.</summary>
-        public bool IsRoot => ReadFlag(RootOption);
-
         /// <summary>True when this state is marked as its parent's initial child.</summary>
         public bool IsInitial => ReadFlag(InitialOption);
 
@@ -71,6 +65,9 @@ namespace Fynite.GraphEditor
 
         /// <inheritdoc />
         public void AssignNewFyniteGuid() => m_FyniteGuid = FyniteGuids.New();
+
+        /// <inheritdoc />
+        public void AdoptFyniteGuid(string guid) => m_FyniteGuid = guid;
 
         /// <inheritdoc />
         public void EnsureFyniteGuid()
@@ -99,13 +96,24 @@ namespace Fynite.GraphEditor
             SyncDisplayName();
         }
 
-        /// <summary>The state this one is parented to, or null when it has no parent.</summary>
-        public FyniteStateNode ResolveParent()
+        /// <summary>
+        /// The node this state is parented to — an ordinary state or the graph's root — or null when it
+        /// is not connected to anything.
+        /// </summary>
+        /// <remarks>
+        /// The return type is the identity interface rather than a state, because the root is a
+        /// different node kind and is a perfectly ordinary thing to be parented to. What the projection
+        /// needs from a parent is its identity, and that is what both kinds have.
+        /// </remarks>
+        public IFyniteIdentifiedNode ResolveParent()
         {
             var port = GetInputPortByName(ParentPort);
             var connected = port?.FirstConnectedPort;
-            return connected?.GetNode() as FyniteStateNode;
+            return connected?.GetNode() as IFyniteIdentifiedNode;
         }
+
+        /// <summary>The ordinary state this one lives inside, or null when its parent is the root.</summary>
+        public FyniteStateNode ResolveParentState() => ResolveParent() as FyniteStateNode;
 
         /// <summary>Reactions declared on this state, in the order they are wired.</summary>
         public List<FyniteReactionNode> ResolveReactions()
@@ -131,6 +139,90 @@ namespace Fynite.GraphEditor
             return reactions;
         }
 
+        /// <summary>Reactions that transition into this state, in the order they are wired.</summary>
+        public List<FyniteReactionNode> ResolveIncoming()
+        {
+            var reactions = new List<FyniteReactionNode>();
+            var port = GetOutputPortByName(IncomingPort);
+            if (port == null)
+            {
+                return reactions;
+            }
+
+            var connected = new List<IPort>();
+            port.GetConnectedPorts(connected);
+
+            for (int i = 0; i < connected.Count; i++)
+            {
+                if (connected[i].GetNode() is FyniteReactionNode reaction)
+                {
+                    reactions.Add(reaction);
+                }
+            }
+
+            return reactions;
+        }
+
+        /// <summary>The states directly inside this one, in the order they are wired.</summary>
+        public List<FyniteStateNode> ResolveChildren()
+        {
+            var children = new List<FyniteStateNode>();
+            var port = GetOutputPortByName(ChildrenPort);
+            if (port == null)
+            {
+                return children;
+            }
+
+            var connected = new List<IPort>();
+            port.GetConnectedPorts(connected);
+
+            for (int i = 0; i < connected.Count; i++)
+            {
+                if (connected[i].GetNode() is FyniteStateNode child)
+                {
+                    children.Add(child);
+                }
+            }
+
+            return children;
+        }
+
+        /// <summary>
+        /// True when this state carries anything a structural root is not allowed to carry.
+        /// </summary>
+        /// <remarks>
+        /// Only migration asks this. A legacy root that answers false can simply become a root node;
+        /// one that answers true has behaviour that must survive, so it stays an ordinary state and a
+        /// root is created above it instead.
+        /// </remarks>
+        public bool HasExecutableContent() =>
+            BlockCount > 0 || ResolveReactions().Count > 0 || ResolveIncoming().Count > 0;
+
+        /// <summary>
+        /// Reads the <c>Is Root</c> flag of a graph written before the root became its own node kind.
+        /// </summary>
+        /// <remarks>
+        /// The option is no longer declared, so Graph Toolkit drops it the next time it defines the
+        /// node. Whether it is still readable in between depends on when that reconciliation happens,
+        /// which is why migration treats this as a hint and can identify a legacy root without it.
+        /// </remarks>
+        /// <returns>False when the flag is not readable, which is the normal case for a current graph.</returns>
+        public bool TryReadLegacyRootFlag(out bool isRoot)
+        {
+            isRoot = false;
+
+            var option = GetNodeOptionByName(LegacyRootOption);
+            if (option == null)
+            {
+                return false;
+            }
+
+            return option.TryGetValue(out isRoot);
+        }
+
+        /// <summary>Name the removed root flag was declared under, kept only so migration can look for it.</summary>
+        internal const string LegacyRootOption = "isRoot";
+
         /// <summary>Blocks of this state grouped by the phase they run in, in stack order.</summary>
         public List<FyniteActionBlockNode> BlocksOfPhase(FynitePhase phase)
         {
@@ -155,7 +247,7 @@ namespace Fynite.GraphEditor
             // target per reaction, many reactions per state.
             context.AddInputPort<FynitePortTypes.Hierarchy>(ParentPort)
                 .WithDisplayName("Parent")
-                .WithTooltip("The state this one lives inside. Only the root has none.")
+                .WithTooltip("Parent is the state that directly contains this state. Root has no parent.")
                 .Build();
 
             context.AddOutputPort<FynitePortTypes.Hierarchy>(ChildrenPort)
@@ -179,11 +271,8 @@ namespace Fynite.GraphEditor
         /// <inheritdoc />
         protected override void OnDefineOptions(IOptionDefinitionContext context)
         {
-            context.AddOption<bool>(RootOption)
-                .WithDisplayName("Is Root")
-                .WithTooltip("The single state that owns the whole hierarchy. Exactly one state must be the root.")
-                .Build();
-
+            // There is deliberately no "Is Root" here. The root is its own node kind, so a state cannot
+            // become one by ticking a box and a graph cannot acquire a second root by ticking two.
             context.AddOption<bool>(InitialOption)
                 .WithDisplayName("Is Initial Child")
                 .WithTooltip("Entering the parent enters this state by default. Exactly one child of every composite state must be marked.")
