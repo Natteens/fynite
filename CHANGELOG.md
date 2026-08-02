@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/Natteens/fynite/compare/v0.5.0...v0.6.0) (2026-08-02)
+
+
+### Features
+
+* Add state authoring and CI validation gates ([6bd7617](https://github.com/Natteens/fynite/commit/6bd76179ee0fe5aaac8d13bf754e59638c71a805))
+
 # [0.5.0](https://github.com/Natteens/fynite/compare/v0.4.0...v0.5.0) (2026-08-02)
 
 
