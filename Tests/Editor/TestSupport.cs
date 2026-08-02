@@ -231,6 +231,49 @@ namespace Fynite.Tests
         }
     }
 
+    /// <summary>Raises a signal from inside guard evaluation, which the machine must reject.</summary>
+    internal sealed class RaisingGuard : IFyniteGuard<ITraceContext>
+    {
+        private readonly SignalHandle _signal;
+        private readonly bool _result;
+
+        internal RaisingGuard(SignalHandle signal, bool result)
+        {
+            _signal = signal;
+            _result = result;
+        }
+
+        public bool Evaluate(ITraceContext context, in FyniteExecution execution)
+        {
+            context.Record("guard-raises");
+            execution.Signals.Raise(_signal);
+            return _result;
+        }
+    }
+
+    /// <summary>Records its disposal in the tally and then throws from <c>Dispose</c>.</summary>
+    internal sealed class ThrowingDisposableAction : IFyniteAction<ITraceContext>, IDisposable
+    {
+        private readonly DisposalTally _tally;
+        private readonly string _label;
+        private readonly string _message;
+
+        internal ThrowingDisposableAction(DisposalTally tally, string label, string message)
+        {
+            _tally = tally;
+            _label = label;
+            _message = message;
+        }
+
+        public void Execute(ITraceContext context, in FyniteExecution execution) => context.Record(_label);
+
+        public void Dispose()
+        {
+            _tally.Record(_label);
+            throw new InvalidOperationException(_message);
+        }
+    }
+
     /// <summary>Throws when evaluated.</summary>
     internal sealed class ThrowingGuard : IFyniteGuard<ITraceContext>
     {

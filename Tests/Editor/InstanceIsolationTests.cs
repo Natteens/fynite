@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 
 namespace Fynite.Tests
@@ -167,6 +168,65 @@ namespace Fynite.Tests
 
             second.Dispose();
             Assert.AreEqual(2, tally.Total);
+        }
+
+        [Test]
+        public void WhenExitAndDisposalBothThrowTheExitFailureIsPropagated()
+        {
+            var tally = new DisposalTally();
+            var sample = new SampleHierarchy();
+            sample.Builder.State(sample.Idle)
+                .OnEnter(() => new ThrowingDisposableAction(tally, "bad-block", "dispose failed"))
+                .OnExit(() => new ThrowingAction("exit failed"));
+            sample.Builder.State(sample.Grounded).OnEnter(() => new DisposableAction(tally, "good-block"));
+            sample.Builder.State(sample.Idle)
+                .On(sample.Move)
+                .When(() => new DisposableGuard(tally, "good-guard"))
+                .TransitionTo(sample.Moving);
+
+            var diagnostics = new RecordingDiagnostics();
+            var machine = sample.Build().CreateMachine(new TraceContext(), diagnostics);
+            machine.Start();
+
+            var error = Assert.Throws<InvalidOperationException>(() => machine.Dispose());
+
+            Assert.AreEqual("exit failed", error.Message, "The exit failure must win over the disposal failure.");
+
+            // Every block was still offered disposal, including the ones after the one that threw.
+            Assert.AreEqual(1, tally.CountOf("bad-block"));
+            Assert.AreEqual(1, tally.CountOf("good-block"));
+            Assert.AreEqual(1, tally.CountOf("good-guard"));
+
+            Assert.AreEqual(FyniteLifecycle.Disposed, machine.Lifecycle);
+
+            // The swallowed disposal failure is still reported rather than lost.
+            Assert.AreEqual(2, diagnostics.Faults.Count);
+            Assert.AreEqual("exit failed", diagnostics.Faults[0].Message);
+            Assert.AreEqual("dispose failed", diagnostics.Faults[1].Message);
+
+            // A second Dispose is a no-op and must not dispose anything twice.
+            Assert.DoesNotThrow(() => machine.Dispose());
+            Assert.AreEqual(3, tally.Total);
+        }
+
+        [Test]
+        public void ADisposalFailureAloneIsPropagatedAfterEveryBlockIsReleased()
+        {
+            var tally = new DisposalTally();
+            var sample = new SampleHierarchy();
+            sample.Builder.State(sample.Idle)
+                .OnEnter(() => new ThrowingDisposableAction(tally, "bad-block", "dispose failed"))
+                .OnExit(() => new DisposableAction(tally, "good-block"));
+
+            var machine = sample.Build().CreateMachine(new TraceContext());
+            machine.Start();
+
+            var error = Assert.Throws<InvalidOperationException>(() => machine.Dispose());
+
+            Assert.AreEqual("dispose failed", error.Message);
+            Assert.AreEqual(1, tally.CountOf("bad-block"));
+            Assert.AreEqual(1, tally.CountOf("good-block"));
+            Assert.AreEqual(FyniteLifecycle.Disposed, machine.Lifecycle);
         }
 
         [Test]

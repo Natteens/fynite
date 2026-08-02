@@ -5,11 +5,24 @@ namespace Fynite
     /// <summary>Tuning knobs for a machine instance. Values are copied when the machine is created.</summary>
     public sealed class FyniteMachineOptions
     {
-        private int _initialSignalCapacity = 16;
-        private int _maxMicrostepsPerPump = 128;
+        /// <summary>Signal queue capacity used when no options are supplied.</summary>
+        internal const int DefaultInitialSignalCapacity = 16;
 
-        /// <summary>Shared defaults. Treat as read-only.</summary>
-        public static FyniteMachineOptions Default { get; } = new FyniteMachineOptions();
+        /// <summary>Microstep budget used when no options are supplied.</summary>
+        internal const int DefaultMaxMicrostepsPerPump = 128;
+
+        private int _initialSignalCapacity = DefaultInitialSignalCapacity;
+        private int _maxMicrostepsPerPump = DefaultMaxMicrostepsPerPump;
+
+        /// <summary>
+        /// A fresh options object carrying the built-in defaults.
+        /// </summary>
+        /// <remarks>
+        /// Every read returns a new instance. Handing out one shared mutable object would let a caller
+        /// that tweaks it silently retune every machine created afterwards, so the defaults themselves
+        /// live in constants and this property is only a convenient starting point.
+        /// </remarks>
+        public static FyniteMachineOptions Default => new FyniteMachineOptions();
 
         /// <summary>Pre-allocated size of the signal queue. The queue still grows if it overflows.</summary>
         public int InitialSignalCapacity

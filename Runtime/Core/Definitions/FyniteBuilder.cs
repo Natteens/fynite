@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Threading;
 
 namespace Fynite
 {
@@ -17,8 +16,6 @@ namespace Fynite
     /// <typeparam name="TContext">Context type the machines will execute against.</typeparam>
     public sealed class FyniteBuilder<TContext> where TContext : class
     {
-        private static int _nextOwner;
-
         private readonly int _owner;
         private readonly List<BuilderState> _states = new List<BuilderState>();
         private readonly List<BuilderSignal> _signals = new List<BuilderSignal>();
@@ -30,7 +27,7 @@ namespace Fynite
         /// <summary>Creates an empty builder with its own handle namespace.</summary>
         public FyniteBuilder()
         {
-            _owner = Interlocked.Increment(ref _nextOwner);
+            _owner = FyniteHandleOwner.Next();
         }
 
         /// <summary>Number of states declared so far.</summary>

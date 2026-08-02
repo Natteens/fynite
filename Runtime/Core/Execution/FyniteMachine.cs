@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.ExceptionServices;
 using Fynite.Diagnostics;
 
 namespace Fynite
@@ -13,8 +14,9 @@ namespace Fynite
     /// </para>
     /// <para>
     /// Signals never re-enter the executor. <c>Raise</c> from outside any machine operation drains the
-    /// queue immediately; <c>Raise</c> from inside a block, guard or effect only enqueues, and the
-    /// queue is drained once the current operation has completed.
+    /// queue immediately; <c>Raise</c> from inside an enter, tick, exit or effect block only enqueues,
+    /// and the queue is drained once the current operation has completed. Raising from a guard is
+    /// rejected outright — see <see cref="IFyniteGuard{TContext}"/>.
     /// </para>
     /// </remarks>
     /// <typeparam name="TContext">Context type the blocks operate on.</typeparam>
@@ -36,6 +38,8 @@ namespace Fynite
         private int _activeDepth;
         private int _executing;
         private bool _stopping;
+        private bool _evaluatingGuard;
+        private StateHandle _guardSource;
         private FyniteLifecycle _lifecycle;
 
         private FyniteSignal _currentSignal;
@@ -52,11 +56,16 @@ namespace Fynite
             _context = context;
             _diagnostics = diagnostics ?? NullFyniteDiagnostics.Instance;
 
-            var effectiveOptions = options ?? FyniteMachineOptions.Default;
-            effectiveOptions.Validate();
-            _maxMicrosteps = effectiveOptions.MaxMicrostepsPerPump;
+            int signalCapacity = FyniteMachineOptions.DefaultInitialSignalCapacity;
+            _maxMicrosteps = FyniteMachineOptions.DefaultMaxMicrostepsPerPump;
+            if (options != null)
+            {
+                options.Validate();
+                signalCapacity = options.InitialSignalCapacity;
+                _maxMicrosteps = options.MaxMicrostepsPerPump;
+            }
 
-            _queue = new SignalQueue(effectiveOptions.InitialSignalCapacity);
+            _queue = new SignalQueue(signalCapacity);
             _activePath = new StateHandle[definition.MaxDepth];
             _cursors = new int[definition.MaxDepth];
             _cursorEnds = new int[definition.MaxDepth];
@@ -227,6 +236,12 @@ namespace Fynite
         /// Stops the machine if needed, then disposes every block instance exactly once and makes the
         /// machine permanently unusable. Safe to call more than once.
         /// </summary>
+        /// <remarks>
+        /// Every block is offered disposal even when something throws. If both the shutdown and a block
+        /// disposal fail, the exit failure is the one propagated because it describes the state the
+        /// entity was left in; the disposal failure is reported through
+        /// <see cref="IFyniteDiagnostics.MachineFaulted"/> so it is not lost.
+        /// </remarks>
         public void Dispose()
         {
             if (_lifecycle == FyniteLifecycle.Disposed)
@@ -236,6 +251,7 @@ namespace Fynite
 
             RequireNotExecuting(nameof(Dispose));
 
+            Exception stopFailure = null;
             try
             {
                 if (_lifecycle == FyniteLifecycle.Running)
@@ -243,12 +259,34 @@ namespace Fynite
                     StopCore();
                 }
             }
-            finally
+            catch (Exception exception)
             {
-                _activeDepth = 0;
-                _queue.Clear();
-                _lifecycle = FyniteLifecycle.Disposed;
-                DisposeBlocks();
+                stopFailure = exception;
+            }
+
+            _activeDepth = 0;
+            _queue.Clear();
+            _lifecycle = FyniteLifecycle.Disposed;
+
+            var disposeFailure = DisposeBlocks();
+
+            if (stopFailure != null)
+            {
+                if (disposeFailure != null)
+                {
+                    _diagnostics.MachineFaulted(new FyniteFaultEvent(
+                        _definition,
+                        FyniteLifecycle.Disposed,
+                        StateHandle.Invalid,
+                        disposeFailure));
+                }
+
+                ExceptionDispatchInfo.Capture(stopFailure).Throw();
+            }
+
+            if (disposeFailure != null)
+            {
+                ExceptionDispatchInfo.Capture(disposeFailure).Throw();
             }
         }
 
@@ -274,21 +312,18 @@ namespace Fynite
             }
             catch
             {
-                // Release whatever was already created without masking the original failure.
-                try
-                {
-                    DisposeBlocks();
-                }
-                catch (Exception)
-                {
-                    // Ignored: the construction failure is the meaningful one.
-                }
-
+                // Release whatever was already created; the construction failure is the meaningful one,
+                // so any disposal failure here is deliberately discarded.
+                _ = DisposeBlocks();
                 throw;
             }
         }
 
-        private void DisposeBlocks()
+        /// <summary>
+        /// Offers disposal to every block instance and returns the first failure, if any, instead of
+        /// throwing, so the caller decides which exception matters.
+        /// </summary>
+        private Exception DisposeBlocks()
         {
             Exception first = null;
 
@@ -304,10 +339,7 @@ namespace Fynite
                 _guards[i] = null;
             }
 
-            if (first != null)
-            {
-                throw first;
-            }
+            return first;
         }
 
         private static Exception DisposeSlot(object instance, Exception first)
@@ -390,6 +422,17 @@ namespace Fynite
             {
                 throw new InvalidOperationException(
                     "The machine has faulted and cannot accept signals; dispose it and create a new one.");
+            }
+
+            if (_evaluatingGuard)
+            {
+                // A guard that raises can starve the executor: rejecting its own reaction while
+                // re-queueing the same signal loops forever without ever selecting a reaction, so the
+                // microstep budget never advances. Guards are predicates; effects are where work goes.
+                throw new InvalidOperationException(
+                    "A guard on state '" + _definition.GetStateName(_guardSource) +
+                    "' tried to raise signal " + DescribeSignal(signal) +
+                    ". Guards must be pure predicates: move the raise into an effect of the reaction.");
             }
 
             int index = _definition.RequireSignal(signal, nameof(signal));
@@ -578,25 +621,38 @@ namespace Fynite
                 signal,
                 this);
 
-            for (int i = 0; i < reaction.Guards.Count; i++)
+            _evaluatingGuard = true;
+            _guardSource = reaction.SourceHandle;
+            try
             {
-                if (!_guards[reaction.Guards.Start + i].Evaluate(_context, in execution))
+                for (int i = 0; i < reaction.Guards.Count; i++)
                 {
-                    _diagnostics.ReactionRejected(new FyniteReactionEvent(
-                        _definition,
-                        signal,
-                        reaction.SourceHandle,
-                        reaction.TargetHandle,
-                        reaction.Priority,
-                        reaction.SourceDepth,
-                        reaction.RegistrationOrder,
-                        i));
-                    return false;
+                    if (!_guards[reaction.Guards.Start + i].Evaluate(_context, in execution))
+                    {
+                        _diagnostics.ReactionRejected(new FyniteReactionEvent(
+                            _definition,
+                            signal,
+                            reaction.SourceHandle,
+                            reaction.TargetHandle,
+                            reaction.Priority,
+                            reaction.SourceDepth,
+                            reaction.RegistrationOrder,
+                            i));
+                        return false;
+                    }
                 }
+            }
+            finally
+            {
+                _evaluatingGuard = false;
+                _guardSource = StateHandle.Invalid;
             }
 
             return true;
         }
+
+        private string DescribeSignal(SignalHandle signal) =>
+            _definition.Owns(signal) ? "'" + _definition.GetSignalName(signal) + "'" : signal.ToString();
 
         private void ExecuteReaction(ReactionRuntime reaction, in FyniteSignal signal)
         {

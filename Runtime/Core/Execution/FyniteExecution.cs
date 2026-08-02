@@ -56,7 +56,15 @@ namespace Fynite
         /// <summary>True when <see cref="Signal"/> refers to an actual signal.</summary>
         public bool HasSignal => _signal.IsValid;
 
-        /// <summary>The machine's signal sink. Raising from a block always queues.</summary>
+        /// <summary>
+        /// The machine's signal sink. Raising from a block always queues; the signal is dispatched once
+        /// the current operation has finished.
+        /// </summary>
+        /// <remarks>
+        /// Raising during <see cref="FynitePhase.Guard"/> is rejected with an
+        /// <see cref="System.InvalidOperationException"/> because guards must be pure predicates.
+        /// See <see cref="IFyniteGuard{TContext}"/>.
+        /// </remarks>
         public IFyniteSignalSink Signals => _signals;
     }
 }
