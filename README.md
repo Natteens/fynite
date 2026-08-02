@@ -102,6 +102,68 @@ machine.Dispose();
 vem de um `FyniteDefinitionAsset` e o contexto é atribuído explicitamente — nada é descoberto por
 busca de cena, singleton ou service locator.
 
+### Authoring visual (`.fyn`)
+
+Além da construção code-first, uma HFSM pode ser desenhada em um graph do **Unity Graph Toolkit**.
+
+Crie um graph com **Assets → Create → Fynite → Fynite Graph** e abra o `.fyn` com duplo clique.
+
+**O que existe no canvas**
+
+| Node | Papel |
+| --- | --- |
+| **Fynite Graph** | Configurações do graph: o script que declara o tipo de contexto. |
+| **State** | Um estado. As actions de Enter/Tick/FixedTick/Exit são blocos empilhados dentro dele, e a ordem da pilha é a ordem de execução. |
+| **Reaction** | Uma reação. Guards e effects são blocos empilhados dentro dela. |
+| **Signal** | Um sinal declarado, com ou sem payload. |
+
+**Como as ligações funcionam**
+
+- `Children` de um pai → `Parent` de cada filho monta a hierarquia. Como portas de entrada aceitam um
+  único fio, um estado não consegue receber dois pais.
+- `Reactions` de um estado → `Source` de uma reação declara a reação naquele estado.
+- `Targeted By` do estado de destino → `Target` da reação faz a transição. **Deixar `Target`
+  desconectado é o que torna a reação uma reação sem transição**: ela roda seus effects e o caminho
+  ativo não muda.
+- `Signal` de um sinal → `Signal` da reação escolhe o gatilho.
+
+Cada tipo de porta é distinto, então o Graph Toolkit recusa ligações inválidas antes de você soltar o
+fio.
+
+**Identidade**
+
+Todo elemento carrega um GUID persistente. Renomear um estado ou um sinal nunca quebra uma ligação ou
+uma referência externa, mover um node nunca altera a semântica, e copiar/colar gera identidades novas
+para as cópias.
+
+**Compilação**
+
+Salvar o `.fyn` reimporta o arquivo, e o importer compila o graph para um `FyniteGraphAsset` — o
+objeto principal do próprio arquivo. Arraste o `.fyn` direto para o campo *Graph* de um
+`FyniteRunner`.
+
+Se a compilação falhar, o asset fica deliberadamente vazio e guarda o erro: nada continua rodando uma
+versão antiga em silêncio. Os diagnósticos aparecem no console, no inspector do asset e no node que os
+causou.
+
+**Referenciando sinais de fora do graph**
+
+```csharp
+[SerializeField] private FyniteSignalReference move;   // dropdown dos sinais do graph
+
+private void OnJumpPressed() => runner.Raise(move);
+```
+
+A referência guarda o GUID do sinal, não seu nome nem seu índice: renomear o sinal não a quebra, e um
+sinal apagado é detectado com uma mensagem clara em vez de resolver para o sinal vizinho. O GUID vira
+um handle denso na primeira resolução e é reutilizado depois disso.
+
+**Depuração em Play Mode**
+
+**Window → Analysis → Fynite Debugger** mostra, para o `FyniteRunner` selecionado: o caminho ativo com
+a folha destacada, o último sinal, a última reação, a última transição e a falha atual. Vários runners
+do mesmo graph são observados separadamente. A janela só lê — nunca modifica o asset.
+
 ### Semânticas garantidas
 
 - Um único caminho ativo; ancestrais comuns são preservados via LCA.

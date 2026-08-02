@@ -4,6 +4,7 @@
   "references": [
     "Fynite",
     "Fynite.Core",
+    "Fynite.Editor.Compiler",
     "Fynite.Tests.Shared",
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner"

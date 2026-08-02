@@ -16,5 +16,12 @@
   "unity": "6000.5",
   "documentationUrl": "https://github.com/Natteens/fynite",
   "changelogUrl": "https://github.com/Natteens/fynite/blob/main/CHANGELOG.md",
-  "licensesUrl": "https://github.com/Natteens/fynite/blob/main/LICENSE.md"
+  "licensesUrl": "https://github.com/Natteens/fynite/blob/main/LICENSE.md",
+  "samples": [
+    {
+      "displayName": "Basic HFSM",
+      "description": "A real .fyn graph with a Root/Idle/Moving hierarchy, three signals, guards, effects and a reaction without a target.",
+      "path": "Samples~/BasicHfsm"
+    }
+  ]
 }

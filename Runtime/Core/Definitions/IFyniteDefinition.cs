@@ -55,5 +55,20 @@ namespace Fynite
 
         /// <summary>Declared payload type of a signal, or <c>null</c> when it accepts no payload.</summary>
         Type GetPayloadType(SignalHandle signal);
+
+        /// <summary>
+        /// Handle of the signal at a dense index.
+        /// </summary>
+        /// <remarks>
+        /// Only the definition can mint a handle carrying its own owner tag, so a host that persisted a
+        /// compiled index has to ask for the handle rather than fabricate one. Indices are allocated in
+        /// declaration order and are stable for the lifetime of the definition.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The index is not a declared signal.</exception>
+        SignalHandle GetSignal(int index);
+
+        /// <summary>Handle of the state at a dense index.</summary>
+        /// <exception cref="ArgumentOutOfRangeException">The index is not a declared state.</exception>
+        StateHandle GetState(int index);
     }
 }

@@ -136,6 +136,30 @@ namespace Fynite
         /// <inheritdoc />
         public Type GetPayloadType(SignalHandle signal) => _signals[RequireSignal(signal, nameof(signal))].PayloadType;
 
+        /// <inheritdoc />
+        public SignalHandle GetSignal(int index)
+        {
+            if ((uint)index >= (uint)_signals.Length)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(index), index, "This definition declares " + _signals.Length + " signals.");
+            }
+
+            return _signals[index].Handle;
+        }
+
+        /// <inheritdoc />
+        public StateHandle GetState(int index)
+        {
+            if ((uint)index >= (uint)_states.Length)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(index), index, "This definition declares " + _states.Length + " states.");
+            }
+
+            return _states[index].Handle;
+        }
+
         internal int RequireState(StateHandle state, string parameterName)
         {
             if (!Owns(state))

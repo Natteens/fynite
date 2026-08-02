@@ -1,0 +1,20 @@
+{
+  "name": "Fynite.Editor.Graph",
+  "rootNamespace": "Fynite.GraphEditor",
+  "references": [
+    "Fynite",
+    "Fynite.Core",
+    "Fynite.Editor.Compiler"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

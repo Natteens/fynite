@@ -44,6 +44,19 @@ namespace Fynite
         private IFyniteMachine _machine;
         private bool _configurationErrorLogged;
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private FyniteRunnerObservation _observation;
+
+        /// <summary>
+        /// What this runner's machine last did, for the graph editor's play mode view.
+        /// </summary>
+        /// <remarks>
+        /// Only compiled in the editor and in development builds. It is an observer installed when the
+        /// machine is created; reading it never touches the machine and never modifies any asset.
+        /// </remarks>
+        public FyniteRunnerObservation Observation => _observation;
+#endif
+
         /// <summary>The machine owned by this runner, or null before it is created.</summary>
         public IFyniteMachine Machine => _machine;
 
@@ -115,6 +128,23 @@ namespace Fynite
         public void Raise(SignalHandle signal, object payload)
         {
             RequireMachine().Raise(signal, payload);
+        }
+
+        /// <summary>
+        /// Raises a persistently referenced signal. The reference resolves to a dense handle on its
+        /// first use and reuses it afterwards.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">No machine yet, or the reference does not point at a signal of this runner's graph.</exception>
+        public void Raise(FyniteSignalReference signal)
+        {
+            signal.Raise(RequireMachine());
+        }
+
+        /// <summary>Raises a persistently referenced signal together with a payload.</summary>
+        /// <exception cref="InvalidOperationException">No machine yet, or the reference does not point at a signal of this runner's graph.</exception>
+        public void Raise(FyniteSignalReference signal, object payload)
+        {
+            signal.Raise(RequireMachine(), payload);
         }
 
         private void OnEnable()
@@ -193,6 +223,11 @@ namespace Fynite
                 ? new FyniteConsoleDiagnostics(this, name)
                 : null;
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            _observation = new FyniteRunnerObservation(diagnostics);
+            diagnostics = _observation;
+#endif
+
             _machine = definition.CreateMachine(context, diagnostics);
             _configurationErrorLogged = false;
             return true;
@@ -218,6 +253,9 @@ namespace Fynite
 
             var machine = _machine;
             _machine = null;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            _observation = null;
+#endif
             machine.Dispose();
         }
 

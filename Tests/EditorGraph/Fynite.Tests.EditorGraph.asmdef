@@ -1,0 +1,28 @@
+{
+  "name": "Fynite.Tests.EditorGraph",
+  "rootNamespace": "Fynite.Tests",
+  "references": [
+    "Fynite",
+    "Fynite.Core",
+    "Fynite.Editor.Compiler",
+    "Fynite.Editor.Graph",
+    "Fynite.Tests.Shared",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

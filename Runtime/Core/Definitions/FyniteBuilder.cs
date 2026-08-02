@@ -118,6 +118,27 @@ namespace Fynite
             return new SignalHandle<TPayload>(new SignalHandle(_owner, _signals.Count - 1));
         }
 
+        /// <summary>
+        /// Declares a signal whose payload type is only known as a <see cref="Type"/>.
+        /// </summary>
+        /// <remarks>
+        /// The generic overloads are the normal way to declare signals. This one exists for hosts that
+        /// rebuild a definition from persisted data, where the payload type arrives as a
+        /// <see cref="Type"/> obtained without reflection (for example from a serialized typed carrier).
+        /// Passing <c>null</c> declares a signal without payload and is identical to
+        /// <see cref="AddSignal(string)"/>.
+        /// </remarks>
+        /// <param name="name">Diagnostic label; never used for lookup.</param>
+        /// <param name="payloadType">Declared payload type, or <c>null</c> for a payload-less signal.</param>
+        public SignalHandle AddSignal(string name, Type payloadType)
+        {
+            ThrowIfBuilt();
+            RequireName(name, nameof(name));
+
+            _signals.Add(new BuilderSignal(name, payloadType));
+            return new SignalHandle(_owner, _signals.Count - 1);
+        }
+
         /// <summary>Starts configuring blocks and reactions of a state.</summary>
         public FyniteStateBuilder<TContext> State(StateHandle state)
         {
