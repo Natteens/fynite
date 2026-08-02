@@ -41,7 +41,7 @@ namespace Fynite.GraphEditor
         /// <summary>Option marking this state as the one its parent enters by default.</summary>
         public const string InitialOption = "isInitial";
 
-        private const string DefaultName = "State";
+        public const string DefaultName = "State";
 
         [SerializeField]
         [HideInInspector]
@@ -81,7 +81,12 @@ namespace Fynite.GraphEditor
         /// <summary>Sets the display name from code.</summary>
         public void SetDisplayName(string value)
         {
-            m_DisplayName = string.IsNullOrWhiteSpace(value) ? DefaultName : value;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            m_DisplayName = value.Trim();
             Title = m_DisplayName;
         }
 
@@ -274,8 +279,8 @@ namespace Fynite.GraphEditor
             // There is deliberately no "Is Root" here. The root is its own node kind, so a state cannot
             // become one by ticking a box and a graph cannot acquire a second root by ticking two.
             context.AddOption<bool>(InitialOption)
-                .WithDisplayName("Is Initial Child")
-                .WithTooltip("Entering the parent enters this state by default. Exactly one child of every composite state must be marked.")
+                .WithDisplayName("Initial")
+                .WithTooltip("The Initial state is the first direct child entered when its Parent becomes active. Use Set as Initial to change it.")
                 .Build();
         }
 

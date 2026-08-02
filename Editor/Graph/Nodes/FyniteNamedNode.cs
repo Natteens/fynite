@@ -34,7 +34,9 @@ namespace Fynite.GraphEditor
             // Graph Toolkit hands back the type name when a user node has no title of its own, which is
             // both the initial state and what a reload leaves behind. Either way it is not a name the
             // user chose, so it must not overwrite one they did.
-            bool titleIsPlaceholder = string.IsNullOrWhiteSpace(title) || title == node.GetType().Name;
+            bool titleIsPlaceholder = string.IsNullOrWhiteSpace(title) ||
+                                      title == node.GetType().Name ||
+                                      (!string.IsNullOrWhiteSpace(stored) && title == fallback);
 
             if (!titleIsPlaceholder && !string.Equals(title, stored, StringComparison.Ordinal))
             {
