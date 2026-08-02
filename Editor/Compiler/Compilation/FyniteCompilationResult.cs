@@ -41,7 +41,7 @@ namespace Fynite.Authoring
         /// <summary>Context type the graph compiled against, when it could be resolved.</summary>
         public Type ContextType { get; internal set; }
 
-        /// <summary>Schema version of the document that was compiled, after migration.</summary>
+        /// <summary>Schema version of the document that was compiled.</summary>
         public int SchemaVersion { get; internal set; }
 
         /// <summary>True when at least one diagnostic is an error.</summary>

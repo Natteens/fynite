@@ -9,35 +9,21 @@ using UnityEngine;
 namespace Fynite.GraphEditor
 {
     /// <summary>
-    /// Shared behaviour of every block node: choosing a block type and editing that block's configuration.
+    /// Shared persisted data and compilation projection for every block node.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The block type is picked as a <see cref="MonoScript"/>. Graph Toolkit renders node options with
-    /// editors chosen by data type, and an object reference is the only one that comes out as a real
-    /// searchable picker — a raw type name would be a text field the user has to spell correctly, which
-    /// the brief rules out. Referencing the script asset also survives renaming the type, because the
-    /// reference is to the asset, not to the name.
-    /// </para>
-    /// <para>
-    /// Configuration is not a JSON blob the user edits. Once the type is known, one node option is
-    /// declared per serialized field of the block, so the inspector shows real typed widgets. Graph
-    /// Toolkit re-runs option definition when the node changes and drops options that no longer exist,
-    /// so switching the block type reshapes the configuration instead of stranding old values.
-    /// </para>
-    /// </remarks>
+    /// <remarks>The script reference and configuration JSON are the single persisted representation.</remarks>
     [Serializable]
     public abstract class FyniteBlockNodeBase : BlockNode, IFyniteIdentifiedNode
     {
-        /// <summary>Name of the option holding the script that defines the block type.</summary>
-        public const string BlockScriptOption = "blockScript";
-
-        /// <summary>Prefix given to the options generated from the block's serialized fields.</summary>
-        public const string ConfigOptionPrefix = "cfg_";
-
         [SerializeField]
         [HideInInspector]
         private string m_FyniteGuid;
+
+        [SerializeField, HideInInspector]
+        private MonoScript m_BlockScript;
+
+        [SerializeField, HideInInspector]
+        private string m_ConfigJson;
 
         /// <inheritdoc />
         public string FyniteGuid => m_FyniteGuid;
@@ -68,70 +54,46 @@ namespace Fynite.GraphEditor
         }
 
         /// <summary>The block type this node currently selects, or null.</summary>
-        public Type ResolveBlockType()
-        {
-            var option = GetNodeOptionByName(BlockScriptOption);
-            if (option == null)
-            {
-                return null;
-            }
+        public Type ResolveBlockType() => m_BlockScript != null ? m_BlockScript.GetClass() : null;
 
-            MonoScript script = null;
-            option.TryGetValue(out script);
-            return script != null ? script.GetClass() : null;
+        /// <summary>Selects the block script through Fynite's public authoring surface.</summary>
+        public void SetBlockScript(MonoScript script)
+        {
+            m_BlockScript = script;
+            var type = ResolveBlockType();
+            m_ConfigJson = type != null
+                ? FyniteBlockFactory.SerializeConfiguration(FyniteBlockFactory.CreateDefault(type))
+                : null;
         }
 
-        /// <inheritdoc />
-        protected override void OnDefineOptions(IOptionDefinitionContext context)
+        /// <summary>Sets one serialized configuration field on the selected block.</summary>
+        public bool SetConfiguration(string fieldName, object value)
         {
-            base.OnDefineOptions(context);
-
-            context.AddOption<MonoScript>(BlockScriptOption)
-                .WithDisplayName(BlockKind == FyniteBlockKind.Guard ? "Guard Script" : "Action Script")
-                .WithTooltip(
-                    BlockKind == FyniteBlockKind.Guard
-                        ? "Script declaring the FyniteGuard<> class this guard runs."
-                        : "Script declaring the FyniteAction<> class this block runs.")
-                .Build();
-
-            // The type is read back straight away so the configuration fields can be declared in the
-            // same pass; Graph Toolkit reconciles the option set whenever it redefines the node.
-            var blockType = ResolveBlockType();
-            if (blockType == null)
+            var type = ResolveBlockType();
+            var prototype = type != null ? FyniteBlockFactory.CreateDefault(type) : null;
+            if (prototype == null)
             {
-                return;
+                return false;
             }
 
-            // A default instance supplies each option's initial value. Without it every option would
-            // start at default(T) and, because the configuration is read back field by field, a block's
-            // own field initialisers would be silently overwritten with zeros the moment it was used.
-            var defaults = FyniteBlockFactory.CreateDefault(blockType);
-
-            foreach (var field in EnumerateConfigurableFields(blockType))
+            if (!string.IsNullOrEmpty(m_ConfigJson))
             {
-                try
-                {
-                    var option = context.AddOption(ConfigOptionPrefix + field.Name, field.FieldType)
-                        .WithDisplayName(ObjectNames.NicifyVariableName(field.Name))
-                        .WithTooltip(DescribeField(field));
-
-                    if (defaults != null)
-                    {
-                        var initial = field.GetValue(defaults);
-                        if (initial != null)
-                        {
-                            option = option.WithDefaultValue(initial);
-                        }
-                    }
-
-                    option.Build();
-                }
-                catch (Exception)
-                {
-                    // A field whose type Graph Toolkit cannot edit simply keeps the block's default;
-                    // the compiler reports it rather than the node failing to define.
-                }
+                JsonUtility.FromJsonOverwrite(m_ConfigJson, prototype);
             }
+
+            foreach (var field in EnumerateConfigurableFields(type))
+            {
+                if (field.Name != fieldName)
+                {
+                    continue;
+                }
+
+                field.SetValue(prototype, value);
+                m_ConfigJson = FyniteBlockFactory.SerializeConfiguration(prototype);
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -142,34 +104,7 @@ namespace Fynite.GraphEditor
         /// <returns>Serialized configuration, or null when there is nothing to store.</returns>
         public string ReadConfiguration(Type blockType)
         {
-            var prototype = FyniteBlockFactory.CreateDefault(blockType);
-            if (prototype == null)
-            {
-                return null;
-            }
-
-            foreach (var field in EnumerateConfigurableFields(blockType))
-            {
-                var option = GetNodeOptionByName(ConfigOptionPrefix + field.Name);
-                if (option == null)
-                {
-                    continue;
-                }
-
-                if (TryReadOption(option, field.FieldType, out object value))
-                {
-                    try
-                    {
-                        field.SetValue(prototype, value);
-                    }
-                    catch (Exception)
-                    {
-                        // Leave the default in place; the compiler surfaces mismatched configuration.
-                    }
-                }
-            }
-
-            return FyniteBlockFactory.SerializeConfiguration(prototype);
+            return m_ConfigJson;
         }
 
         /// <summary>Fields of a block that make up its authored configuration.</summary>
@@ -219,37 +154,5 @@ namespace Fynite.GraphEditor
             }
         }
 
-        private static bool TryReadOption(INodeOption option, Type valueType, out object value)
-        {
-            value = null;
-
-            // INodeOption.TryGetValue is generic and the field type is only known at run time, so the
-            // call is closed reflectively. This is editor-side authoring code; nothing here reaches the
-            // compiled asset, which stores a real instance instead.
-            var method = typeof(INodeOption).GetMethod(nameof(INodeOption.TryGetValue));
-            if (method == null)
-            {
-                return false;
-            }
-
-            try
-            {
-                var closed = method.MakeGenericMethod(valueType);
-                var arguments = new object[] { null };
-                bool read = (bool)closed.Invoke(option, arguments);
-                value = arguments[0];
-                return read;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
-        private static string DescribeField(FieldInfo field)
-        {
-            var tooltip = field.GetCustomAttribute<TooltipAttribute>();
-            return tooltip != null ? tooltip.tooltip : field.FieldType.Name;
-        }
     }
 }

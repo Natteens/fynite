@@ -138,8 +138,8 @@ namespace Fynite.Authoring
         /// <summary>The document was written by a newer Fynite than this one.</summary>
         public const string SchemaVersionFromFuture = "FYN0102";
 
-        /// <summary>The document was migrated from an older schema version.</summary>
-        public const string SchemaMigrated = "FYN0103";
+        /// <summary>The document uses a schema other than the current one.</summary>
+        public const string SchemaVersionUnsupported = "FYN0103";
 
         /// <summary>The document could not be read at all.</summary>
         public const string SchemaUnreadable = "FYN0104";
@@ -169,15 +169,6 @@ namespace Fynite.Authoring
 
         /// <summary>The context type cannot be assigned to a runner's context field.</summary>
         public const string ContextNotRunnable = "FYN0304";
-
-        /// <summary>
-        /// A graph written before the context became graph metadata carries more than one settings node,
-        /// and they disagree about the context type.
-        /// </summary>
-        public const string LegacyContextConflict = "FYN0305";
-
-        /// <summary>The context type was lifted out of a legacy settings node into the graph itself.</summary>
-        public const string LegacyContextMigrated = "FYN0306";
 
         // Hierarchy — 04xx
         /// <summary>No state is marked as the root.</summary>
@@ -215,21 +206,6 @@ namespace Fynite.Authoring
 
         /// <summary>The root is marked as an initial child.</summary>
         public const string RootMarkedInitial = "FYN0412";
-
-        /// <summary>
-        /// A graph written before the root became its own node kind declares more than one root, so
-        /// which one to turn into the structural root cannot be decided without guessing.
-        /// </summary>
-        public const string LegacyRootAmbiguous = "FYN0413";
-
-        /// <summary>
-        /// A legacy root carried behaviour a structural root cannot, so it was kept as an ordinary state
-        /// underneath a newly created structural root.
-        /// </summary>
-        public const string LegacyRootPreserved = "FYN0414";
-
-        /// <summary>A legacy root was converted straight into a structural root node.</summary>
-        public const string LegacyRootConverted = "FYN0415";
 
         // Signals — 05xx
         /// <summary>A signal has an empty name.</summary>

@@ -25,8 +25,7 @@ namespace Fynite.GraphEditor
     /// The context type is the one thing here that is not a node. It is a property of the whole graph
     /// rather than a step in the flow being drawn, so it lives in a serialized field and is edited in the
     /// <c>.fyn</c> inspector. There is exactly one of it, it cannot be deleted or duplicated, and it
-    /// travels in the file like everything else — see <see cref="FyniteGraphMigration"/> for how graphs
-    /// that used to keep it in a node are brought over.
+    /// travels in the file like everything else.
     /// </para>
     /// </remarks>
     [Serializable]
@@ -70,7 +69,7 @@ namespace Fynite.GraphEditor
         public void SetContextType(Type contextType) =>
             m_ContextTypeIdentity = FyniteTypeReference.Format(contextType);
 
-        /// <summary>Records the context type from a stored identity, for the inspector and migration.</summary>
+        /// <summary>Records the context type from a stored identity for the inspector.</summary>
         public void SetContextTypeIdentity(string identity) =>
             m_ContextTypeIdentity = string.IsNullOrEmpty(identity) ? null : identity;
 
@@ -133,17 +132,6 @@ namespace Fynite.GraphEditor
         {
             base.OnEnable();
 
-            // A graph opened from a file written before identity or versioning existed still needs both,
-            // and there is no earlier moment than this to give them.
-            if (string.IsNullOrEmpty(m_GraphGuid))
-            {
-                m_GraphGuid = FyniteGuids.New();
-            }
-
-            if (m_SchemaVersion <= 0)
-            {
-                m_SchemaVersion = FyniteGraphDocument.MinimumSupportedSchemaVersion;
-            }
         }
 
         /// <inheritdoc />
@@ -151,31 +139,18 @@ namespace Fynite.GraphEditor
         {
             base.OnGraphChanged(graphLogger);
 
-            if (m_SchemaVersion > FyniteGraphDocument.CurrentSchemaVersion)
+            if (m_SchemaVersion != FyniteGraphDocument.CurrentSchemaVersion)
             {
                 graphLogger.LogError(
-                    "This graph was written with schema version " + m_SchemaVersion + " but this build of " +
-                    "Fynite only understands up to version " + FyniteGraphDocument.CurrentSchemaVersion +
-                    ". Editing it here would reinterpret it; upgrade Fynite instead.");
+                    "Unsupported Fynite schema version " + m_SchemaVersion + ". This build accepts only " +
+                    FyniteGraphDocument.CurrentSchemaVersion + ". Convert the file with the Fynite version that owns it.");
                 return;
             }
-
-            // Migration runs before anything reads the graph, so the rest of this method — and every
-            // validation behind it — only ever sees the current shape. It is idempotent, so a graph that
-            // needs nothing pays a scan and changes nothing.
-            var migration = FyniteGraphMigration.Apply(this);
 
             EnsureUniqueIdentities();
             RefreshLabels();
 
-            if (m_SchemaVersion < FyniteGraphDocument.CurrentSchemaVersion)
-            {
-                // The projection already reads the current shape, so recording the new version here is
-                // what makes the migration stick the next time the file is written.
-                m_SchemaVersion = FyniteGraphDocument.CurrentSchemaVersion;
-            }
-
-            FyniteGraphValidation.Report(this, graphLogger, migration);
+            FyniteGraphValidation.Report(this, graphLogger);
         }
 
         /// <summary>Records the schema version this graph is now written in.</summary>

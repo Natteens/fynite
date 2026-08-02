@@ -40,10 +40,10 @@ namespace Fynite.Authoring
         }
 
         /// <summary>
-        /// Parses a document and brings it up to the current schema version.
+        /// Parses a document in the current schema version.
         /// </summary>
         /// <param name="json">Serialized document.</param>
-        /// <param name="document">The parsed and migrated document, or null on failure.</param>
+        /// <param name="document">The parsed document, or null on failure.</param>
         /// <param name="diagnostics">Everything noticed while reading; may contain warnings on success.</param>
         /// <returns>False when the document cannot be used at all.</returns>
         public static bool TryParse(string json, out FyniteGraphDocument document, out IReadOnlyList<FyniteDiagnostic> diagnostics)
@@ -79,7 +79,7 @@ namespace Fynite.Authoring
                 return false;
             }
 
-            if (!FyniteSchemaMigrator.CheckVersion(version, found))
+            if (!FyniteSchema.CheckCurrent(version, found))
             {
                 return false;
             }
@@ -110,7 +110,6 @@ namespace Fynite.Authoring
             }
 
             Normalize(parsed);
-            FyniteSchemaMigrator.Migrate(parsed, found);
             document = parsed;
             return true;
         }

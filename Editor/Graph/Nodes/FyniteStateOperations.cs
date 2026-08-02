@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Fynite.GraphEditor
 {
-    /// <summary>Atomic authoring operations shared by the State Scope window and tests.</summary>
+    /// <summary>Atomic state authoring operations implemented through Graph Toolkit's public graph API.</summary>
     public static class FyniteStateOperations
     {
         public static bool Rename(FyniteGraph graph, FyniteStateNode state, string name)
@@ -22,9 +22,7 @@ namespace Fynite.GraphEditor
                 return false;
             }
 
-            graph.UndoBeginRecordGraph("Rename State");
             state.SetDisplayName(normalized);
-            graph.UndoEndRecordGraph();
             return true;
         }
 
@@ -37,12 +35,10 @@ namespace Fynite.GraphEditor
             }
 
             var siblings = ChildrenOf(parent);
-            graph.UndoBeginRecordGraph("Set as Initial");
             for (int i = 0; i < siblings.Count; i++)
             {
-                FyniteNodeOptions.Set(siblings[i], FyniteStateNode.InitialOption, siblings[i] == selected);
+                siblings[i].SetInitial(siblings[i] == selected);
             }
-            graph.UndoEndRecordGraph();
             return true;
         }
 
@@ -61,7 +57,7 @@ namespace Fynite.GraphEditor
             child.SetDisplayName(NextDefaultName(existing));
             child.Position = position;
             graph.Connect(ChildrenPort(parent), child.GetInputPortByName(FyniteStateNode.ParentPort));
-            FyniteNodeOptions.Set(child, FyniteStateNode.InitialOption, existing.Count == 0);
+            child.SetInitial(existing.Count == 0);
             graph.UndoEndRecordGraph();
             return child;
         }
@@ -107,9 +103,28 @@ namespace Fynite.GraphEditor
             graph.Connect(ChildrenPort(newParent), state.GetInputPortByName(FyniteStateNode.ParentPort));
             // Moving an Initial into a group that already has one must not duplicate Initial. A first
             // child, however, always becomes Initial as part of this explicit edit.
-            FyniteNodeOptions.Set(state, FyniteStateNode.InitialOption, firstAtDestination);
+            state.SetInitial(firstAtDestination);
             graph.UndoEndRecordGraph();
             return true;
+        }
+
+        public static FyniteStateNode Duplicate(FyniteGraph graph, FyniteStateNode source, Vector2 position)
+        {
+            var parent = source?.ResolveParent();
+            if (graph == null || source == null || parent == null)
+            {
+                return null;
+            }
+
+            var duplicate = new FyniteStateNode();
+            graph.UndoBeginRecordGraph("Duplicate State");
+            graph.AddNode(duplicate);
+            duplicate.SetDisplayName(source.StateName);
+            duplicate.Position = position;
+            graph.Connect(ChildrenPort(parent), duplicate.GetInputPortByName(FyniteStateNode.ParentPort));
+            duplicate.SetInitial(false);
+            graph.UndoEndRecordGraph();
+            return duplicate;
         }
 
         public static List<FyniteStateNode> ChildrenOf(IFyniteIdentifiedNode parent)

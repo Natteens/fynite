@@ -41,5 +41,5 @@ Open **Window → Analysis → Fynite Debugger** with the runner selected to wat
 
 ## Regenerating the graph
 
-`Assets → Create → Fynite → Samples → Regenerate Patrol Sample Graph` rebuilds `Patrol.fyn` from
-`PatrolGraphGenerator`, which is also a worked example of building a graph from code.
+`PatrolGraphGenerator.Generate(path)` rebuilds the graph through Fynite and Graph Toolkit's public
+authoring APIs and serves as a worked example for project-specific tooling.

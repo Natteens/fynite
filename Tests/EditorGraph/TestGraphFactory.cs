@@ -97,7 +97,7 @@ namespace Fynite.Tests
 
             if (initial)
             {
-                FyniteNodeOptions.Set(state, FyniteStateNode.InitialOption, true);
+                state.SetInitial(true);
             }
 
             return state;
@@ -117,7 +117,7 @@ namespace Fynite.Tests
 
             if (initial)
             {
-                FyniteNodeOptions.Set(state, FyniteStateNode.InitialOption, true);
+                state.SetInitial(true);
             }
 
             return state;
@@ -133,7 +133,7 @@ namespace Fynite.Tests
 
             if (payload != FyniteSignalNode.PayloadKind.None)
             {
-                FyniteNodeOptions.Set(signal, FyniteSignalNode.PayloadKindOption, payload);
+                signal.SetPayload(payload);
             }
 
             return signal;
@@ -167,8 +167,7 @@ namespace Fynite.Tests
                     reaction.GetInputPortByName(FyniteReactionNode.TargetPort));
             }
 
-            FyniteNodeOptions.Set(reaction, FyniteReactionNode.PriorityOption, priority);
-            FyniteNodeOptions.Set(reaction, FyniteReactionNode.OrderOption, order);
+            reaction.SetResolution(priority, order);
             return reaction;
         }
 
@@ -177,7 +176,7 @@ namespace Fynite.Tests
         {
             owner.CreateBlockNode<TNode>();
             var node = (TNode)owner.GetBlock(owner.BlockCount - 1);
-            FyniteNodeOptions.Set(node, FyniteBlockNodeBase.BlockScriptOption, ScriptOf<TBlock>());
+            node.SetBlockScript(ScriptOf<TBlock>());
             return node;
         }
 
@@ -191,14 +190,20 @@ namespace Fynite.Tests
             // Configuration options only exist once the block type is known, so the node has to be
             // redefined before a value can be written into one.
             node.DefineNode();
-            FyniteNodeOptions.Set(node, FyniteBlockNodeBase.ConfigOptionPrefix + field, value);
+            if (!node.SetConfiguration(field, value))
+            {
+                throw new System.InvalidOperationException("Could not set configuration field " + field + ".");
+            }
         }
 
         internal static void AddConfiguredEffect(ContextNode owner, string label)
         {
             var node = AddBlock<FyniteEffectBlockNode, GraphTestEffectAction>(owner);
             node.DefineNode();
-            FyniteNodeOptions.Set(node, FyniteBlockNodeBase.ConfigOptionPrefix + "label", label);
+            if (!node.SetConfiguration("label", label))
+            {
+                throw new System.InvalidOperationException("Could not set configuration field label.");
+            }
         }
 
         /// <summary>Finds the script asset declaring a type, the way a block picker would.</summary>

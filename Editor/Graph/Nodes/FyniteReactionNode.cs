@@ -36,24 +36,31 @@ namespace Fynite.GraphEditor
         /// <summary>Port connected to the target state's Targeted By port; unconnected means no transition.</summary>
         public const string TargetPort = "Target";
 
-        /// <summary>Option holding the resolution priority.</summary>
-        public const string PriorityOption = "priority";
-
-        /// <summary>Option holding the explicit registration order.</summary>
-        public const string OrderOption = "order";
-
         [SerializeField]
         [HideInInspector]
         private string m_FyniteGuid;
+
+        [SerializeField, HideInInspector]
+        private int m_Priority;
+
+        [SerializeField, HideInInspector]
+        private int m_Order;
 
         /// <inheritdoc />
         public string FyniteGuid => m_FyniteGuid;
 
         /// <summary>Resolution priority; higher wins.</summary>
-        public int Priority => ReadInt(PriorityOption);
+        public int Priority => m_Priority;
 
         /// <summary>Explicit registration order, the last tie-break between equal priorities.</summary>
-        public int Order => ReadInt(OrderOption);
+        public int Order => m_Order;
+
+        /// <summary>Sets deterministic reaction resolution metadata.</summary>
+        public void SetResolution(int priority, int order)
+        {
+            m_Priority = priority;
+            m_Order = order;
+        }
 
         /// <inheritdoc />
         public void AssignNewFyniteGuid() => m_FyniteGuid = FyniteGuids.New();
@@ -150,33 +157,5 @@ namespace Fynite.GraphEditor
                 .Build();
         }
 
-        /// <inheritdoc />
-        protected override void OnDefineOptions(IOptionDefinitionContext context)
-        {
-            context.AddOption<int>(PriorityOption)
-                .WithDisplayName("Priority")
-                .WithTooltip("Higher wins when several reactions on the active path answer the same signal.")
-                .Build();
-
-            context.AddOption<int>(OrderOption)
-                .WithDisplayName("Order")
-                .WithTooltip(
-                    "Explicit registration order, used as the last tie-break between reactions of equal " +
-                    "priority and depth. Give every reaction a distinct value to make resolution explicit.")
-                .Build();
-        }
-
-        private int ReadInt(string option)
-        {
-            var value = GetNodeOptionByName(option);
-            if (value == null)
-            {
-                return 0;
-            }
-
-            int number = 0;
-            value.TryGetValue(out number);
-            return number;
-        }
     }
 }

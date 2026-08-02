@@ -122,52 +122,15 @@ namespace Fynite.Tests
         }
 
         [Test]
-        public void AnOlderSchemaVersionIsMigratedDeterministically()
+        public void AnOlderSchemaVersionIsExplicitlyRejected()
         {
             var document = AuthoringDocumentBuilder.Valid();
-            AuthoringDocumentBuilder.Reaction(document, "r1", AuthoringDocumentBuilder.IdleGuid, AuthoringDocumentBuilder.MoveGuid, null);
-            AuthoringDocumentBuilder.Reaction(document, "r2", AuthoringDocumentBuilder.IdleGuid, AuthoringDocumentBuilder.StopGuid, null);
+            document.schemaVersion = FyniteGraphDocument.CurrentSchemaVersion - 1;
 
-            // Version 1 had no explicit reaction order; migration freezes the order the list had.
-            document.schemaVersion = 1;
-            document.reactions[0].order = 0;
-            document.reactions[1].order = 0;
-
-            var diagnostics = new List<FyniteDiagnostic>();
-            Assert.IsTrue(FyniteSchemaMigrator.Migrate(document, diagnostics));
-
-            Assert.AreEqual(FyniteGraphDocument.CurrentSchemaVersion, document.schemaVersion);
-            Assert.AreEqual(0, document.reactions[0].order);
-            Assert.AreEqual(1, document.reactions[1].order);
-            Assert.IsTrue(diagnostics.Any(d => d.Code == FyniteDiagnosticCodes.SchemaMigrated), Describe(diagnostics));
-        }
-
-        [Test]
-        public void MigratingAnAlreadyCurrentDocumentChangesNothing()
-        {
-            var document = AuthoringDocumentBuilder.Valid();
-            var before = FyniteDocumentJson.ToJson(document);
-
-            Assert.IsFalse(FyniteSchemaMigrator.Migrate(document, new List<FyniteDiagnostic>()));
-            Assert.AreEqual(before, FyniteDocumentJson.ToJson(document));
-        }
-
-        [Test]
-        public void MigrationIsIdempotent()
-        {
-            var first = AuthoringDocumentBuilder.Valid();
-            AuthoringDocumentBuilder.Reaction(first, "r1", AuthoringDocumentBuilder.IdleGuid, AuthoringDocumentBuilder.MoveGuid, null);
-            first.schemaVersion = 1;
-
-            var second = AuthoringDocumentBuilder.Valid();
-            AuthoringDocumentBuilder.Reaction(second, "r1", AuthoringDocumentBuilder.IdleGuid, AuthoringDocumentBuilder.MoveGuid, null);
-            second.schemaVersion = 1;
-
-            FyniteSchemaMigrator.Migrate(first, new List<FyniteDiagnostic>());
-            FyniteSchemaMigrator.Migrate(second, new List<FyniteDiagnostic>());
-            FyniteSchemaMigrator.Migrate(second, new List<FyniteDiagnostic>());
-
-            Assert.AreEqual(FyniteDocumentJson.ToJson(first), FyniteDocumentJson.ToJson(second));
+            Assert.IsFalse(FyniteDocumentJson.TryParse(
+                FyniteDocumentJson.ToJson(document), out var parsed, out var diagnostics));
+            Assert.IsNull(parsed);
+            Assert.IsTrue(diagnostics.Any(d => d.Code == FyniteDiagnosticCodes.SchemaVersionUnsupported), Describe(diagnostics));
         }
 
         [Test]

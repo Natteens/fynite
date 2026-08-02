@@ -2,21 +2,9 @@
   "name": "Fynite.Samples.BasicHfsm.Editor",
   "rootNamespace": "Fynite.Samples.BasicHfsm.Editor",
   "references": [
-    "Fynite",
-    "Fynite.Core",
-    "Fynite.Editor.Compiler",
     "Fynite.Editor.Graph",
     "Fynite.Samples.BasicHfsm"
   ],
-  "includePlatforms": [
-    "Editor"
-  ],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "overrideReferences": false,
-  "precompiledReferences": [],
-  "autoReferenced": true,
-  "defineConstraints": [],
-  "versionDefines": [],
-  "noEngineReferences": false
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
 }

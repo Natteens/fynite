@@ -65,10 +65,7 @@ namespace Fynite.GraphEditor
         /// <summary>
         /// Takes over an existing identity.
         /// </summary>
-        /// <remarks>
-        /// Only migration does this, and only to carry a node's identity across a change of node kind so
-        /// that everything referring to it still refers to the same thing.
-        /// </remarks>
+        /// <remarks>Used only by controlled authoring operations that intentionally preserve identity.</remarks>
         void AdoptFyniteGuid(string guid);
 
         /// <summary>Issues an identity only if there is none.</summary>

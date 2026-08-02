@@ -10,7 +10,6 @@
 
 ### Features
 
-* Migrate graphs to root node and graph context ([2f44c94](https://github.com/Natteens/fynite/commit/2f44c94b5e382efbdadd0f09bbc4632f2e67765c))
 
 # [0.3.0](https://github.com/Natteens/fynite/compare/v0.2.1...v0.3.0) (2026-08-02)
 

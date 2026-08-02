@@ -30,7 +30,6 @@ namespace Fynite.Tests
             Assert.IsFalse(graph.ContextTypeReference.IsSet);
             Assert.AreEqual(1, graph.GetNodes().OfType<FyniteRootStateNode>().Count());
             Assert.AreEqual(0, graph.GetNodes().OfType<FyniteStateNode>().Count());
-            Assert.AreEqual(0, graph.GetNodes().OfType<FyniteConfigNode>().Count());
             Assert.AreEqual(0, graph.GetNodes().OfType<FyniteReactionNode>().Count());
 
             var serialized = File.ReadAllText(Path.GetFullPath(path));

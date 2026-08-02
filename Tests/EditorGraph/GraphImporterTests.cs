@@ -191,6 +191,26 @@ namespace Fynite.Tests
             Assert.AreEqual(Fynite.Authoring.FyniteGraphDocument.CurrentSchemaVersion, asset.SchemaVersion);
         }
 
+        [Test]
+        public void ImporterExplicitlyRejectsANonCurrentSchema()
+        {
+            var path = TestGraphFactory.NewPath("unsupported-schema");
+            FyniteGraphCreation.Create(path);
+            var absolute = System.IO.Path.GetFullPath(path);
+            var text = System.IO.File.ReadAllText(absolute).Replace(
+                "m_SchemaVersion: " + Fynite.Authoring.FyniteGraphDocument.CurrentSchemaVersion,
+                "m_SchemaVersion: " + (Fynite.Authoring.FyniteGraphDocument.CurrentSchemaVersion - 1));
+            System.IO.File.WriteAllText(absolute, text);
+
+            LogAssert.ignoreFailingMessages = true;
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
+            LogAssert.ignoreFailingMessages = false;
+
+            var asset = AssetDatabase.LoadAssetAtPath<FyniteGraphAsset>(path);
+            Assert.IsFalse(asset.IsExecutable);
+            StringAssert.Contains("Unsupported Fynite schema version", asset.CompilationError);
+        }
+
         private static string Describe(FyniteGraphAsset asset)
         {
             var definition = asset.Definition;

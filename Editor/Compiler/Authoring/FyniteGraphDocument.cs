@@ -23,10 +23,7 @@ namespace Fynite.Authoring
     public sealed class FyniteGraphDocument
     {
         /// <summary>Schema version this build of Fynite writes and fully understands.</summary>
-        public const int CurrentSchemaVersion = 3;
-
-        /// <summary>Oldest schema version that can still be migrated forward.</summary>
-        public const int MinimumSupportedSchemaVersion = 1;
+        public const int CurrentSchemaVersion = 4;
 
         /// <summary>Version of the schema the document was written with.</summary>
         public int schemaVersion = CurrentSchemaVersion;

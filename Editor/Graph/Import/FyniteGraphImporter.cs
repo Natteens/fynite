@@ -35,7 +35,7 @@ namespace Fynite.GraphEditor
         /// Bumping this reimports every graph in the project, and must be bumped whenever a change to
         /// the compiler alters what a given file compiles to.
         /// </summary>
-        private const int ImporterVersion = 6;
+        private const int ImporterVersion = 7;
 
         /// <summary>Identifier of the compiled asset inside the imported file. Never change it.</summary>
         public const string MainObjectIdentifier = "FyniteGraphAsset";
@@ -68,18 +68,11 @@ namespace Fynite.GraphEditor
                 return;
             }
 
-            // An older graph is brought up to the current shape on the copy that was just loaded, so it
-            // compiles to what it means rather than to what it used to say. Nothing is written back: the
-            // file is rewritten only when the user opens the graph and saves it.
-            FyniteGraphMigrationResult migration;
-            try
-            {
-                migration = FyniteGraphMigration.Apply(graph);
-            }
-            catch (Exception exception)
+            if (graph.SchemaVersion != FyniteGraphDocument.CurrentSchemaVersion)
             {
                 Fail(ctx, asset, graph.GraphGuid, graph.SchemaVersion,
-                    "The graph could not be migrated to the current format: " + exception.Message);
+                    "Unsupported Fynite schema version " + graph.SchemaVersion + ". This build accepts only " +
+                    FyniteGraphDocument.CurrentSchemaVersion + ".");
                 return;
             }
 
@@ -94,8 +87,6 @@ namespace Fynite.GraphEditor
                     "The graph could not be read into an authoring model: " + exception.Message);
                 return;
             }
-
-            Log(ctx, asset, migration.Diagnostics);
 
             // A file that was just created, or whose context has not been chosen yet, is a normal step on
             // the way to a graph rather than a mistake. It still produces a deliberately non-runnable

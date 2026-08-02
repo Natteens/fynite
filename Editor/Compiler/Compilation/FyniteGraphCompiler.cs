@@ -24,7 +24,7 @@ namespace Fynite.Authoring
     public static class FyniteGraphCompiler
     {
         /// <summary>Compiles a document.</summary>
-        /// <param name="document">The authoring model. Not modified except by schema migration.</param>
+        /// <param name="document">The current authoring model. It is not modified.</param>
         public static FyniteCompilationResult Compile(FyniteGraphDocument document)
         {
             var diagnostics = new List<FyniteDiagnostic>();
@@ -42,12 +42,11 @@ namespace Fynite.Authoring
 
             FyniteDocumentJson.Normalize(document);
 
-            if (!FyniteSchemaMigrator.CheckVersion(document.schemaVersion, diagnostics))
+            if (!FyniteSchema.CheckCurrent(document.schemaVersion, diagnostics))
             {
                 return result;
             }
 
-            FyniteSchemaMigrator.Migrate(document, diagnostics);
             result.SchemaVersion = document.schemaVersion;
 
             ValidateIdentity(document, diagnostics);

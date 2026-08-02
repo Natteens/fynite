@@ -28,14 +28,13 @@ namespace Fynite.GraphEditor
     [UseWithGraph(typeof(FyniteGraph))]
     public sealed class FyniteSignalNode : FyniteNamedNode
     {
+        [SerializeField, HideInInspector]
+        private PayloadKind m_PayloadKind;
+
+        [SerializeField, HideInInspector]
+        private MonoScript m_PayloadScript;
         /// <summary>Port every listening reaction connects to.</summary>
         public const string SignalPort = "Signal";
-
-        /// <summary>Option holding the script that declares the payload type, if any.</summary>
-        public const string PayloadScriptOption = "payloadScript";
-
-        /// <summary>Option choosing between the built-in payload kinds and a scripted one.</summary>
-        public const string PayloadKindOption = "payload";
 
         /// <summary>Payload types offered without needing a script reference.</summary>
         public enum PayloadKind
@@ -74,6 +73,13 @@ namespace Fynite.GraphEditor
         /// <inheritdoc />
         protected override string DefaultDisplayName => "Signal";
 
+        /// <summary>Sets the payload through Fynite's public authoring model.</summary>
+        public void SetPayload(PayloadKind kind, MonoScript script = null)
+        {
+            m_PayloadKind = kind;
+            m_PayloadScript = script;
+        }
+
         /// <summary>The payload type this signal declares, or null when it carries none.</summary>
         public Type ResolvePayloadType()
         {
@@ -86,10 +92,7 @@ namespace Fynite.GraphEditor
                 case PayloadKind.Vector2: return typeof(Vector2);
                 case PayloadKind.Vector3: return typeof(Vector3);
                 case PayloadKind.FromScript:
-                    var option = GetNodeOptionByName(PayloadScriptOption);
-                    MonoScript script = null;
-                    option?.TryGetValue(out script);
-                    return script != null ? script.GetClass() : null;
+                    return m_PayloadScript != null ? m_PayloadScript.GetClass() : null;
                 default:
                     return null;
             }
@@ -145,34 +148,6 @@ namespace Fynite.GraphEditor
                 .Build();
         }
 
-        /// <inheritdoc />
-        protected override void OnDefineOptions(IOptionDefinitionContext context)
-        {
-            context.AddOption<PayloadKind>(PayloadKindOption)
-                .WithDisplayName("Payload")
-                .WithTooltip("What this signal carries when it is raised. Prefer no payload for frequent events.")
-                .Build();
-
-            if (ReadKind() == PayloadKind.FromScript)
-            {
-                context.AddOption<MonoScript>(PayloadScriptOption)
-                    .WithDisplayName("Payload Script")
-                    .WithTooltip("Script declaring the payload type this signal carries.")
-                    .Build();
-            }
-        }
-
-        private PayloadKind ReadKind()
-        {
-            var option = GetNodeOptionByName(PayloadKindOption);
-            if (option == null)
-            {
-                return PayloadKind.None;
-            }
-
-            PayloadKind kind = PayloadKind.None;
-            option.TryGetValue(out kind);
-            return kind;
-        }
+        private PayloadKind ReadKind() => m_PayloadKind;
     }
 }

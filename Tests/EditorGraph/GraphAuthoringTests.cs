@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Fynite.Authoring;
 using Fynite.GraphEditor;
@@ -28,7 +29,6 @@ namespace Fynite.Tests
             Assert.IsFalse(graph.ContextTypeReference.IsSet, "context starts pending in graph metadata");
             Assert.AreEqual(1, graph.GetNodes().OfType<FyniteRootStateNode>().Count(), "one structural root is created");
             Assert.AreEqual(0, graph.GetNodes().OfType<FyniteStateNode>().Count(), "no executable state is invented");
-            Assert.AreEqual(0, graph.GetNodes().OfType<FyniteConfigNode>().Count(), "settings are not represented on the canvas");
 
             var document = FyniteGraphProjection.ToDocument(graph);
             var result = FyniteGraphCompiler.Compile(document);
@@ -37,6 +37,12 @@ namespace Fynite.Tests
             Assert.IsTrue(
                 result.Diagnostics.Any(d => d.Code == FyniteDiagnosticCodes.ContextMissing),
                 string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
+        }
+
+        [Test]
+        public void RemovedSettingsNodeTypeIsAbsentFromTheEditorAssembly()
+        {
+            Assert.IsNull(Type.GetType("Fynite.GraphEditor.FyniteConfigNode, Fynite.Editor.Graph"));
         }
 
         [Test]

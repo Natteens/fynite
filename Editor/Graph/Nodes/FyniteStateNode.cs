@@ -38,9 +38,6 @@ namespace Fynite.GraphEditor
         /// <summary>Port reactions targeting this state connect to.</summary>
         public const string IncomingPort = "Targeted By";
 
-        /// <summary>Option marking this state as the one its parent enters by default.</summary>
-        public const string InitialOption = "isInitial";
-
         public const string DefaultName = "State";
 
         [SerializeField]
@@ -51,11 +48,18 @@ namespace Fynite.GraphEditor
         [HideInInspector]
         private string m_DisplayName;
 
+        [SerializeField]
+        [HideInInspector]
+        private bool m_IsInitial;
+
         /// <inheritdoc />
         public string FyniteGuid => m_FyniteGuid;
 
         /// <summary>True when this state is marked as its parent's initial child.</summary>
-        public bool IsInitial => ReadFlag(InitialOption);
+        public bool IsInitial => m_IsInitial;
+
+        /// <summary>Sets whether this state is its parent's Initial child.</summary>
+        internal void SetInitial(bool value) => m_IsInitial = value;
 
         /// <summary>
         /// Display name. The canvas rename edits it and <see cref="SyncDisplayName"/> persists it; the
@@ -192,42 +196,6 @@ namespace Fynite.GraphEditor
             return children;
         }
 
-        /// <summary>
-        /// True when this state carries anything a structural root is not allowed to carry.
-        /// </summary>
-        /// <remarks>
-        /// Only migration asks this. A legacy root that answers false can simply become a root node;
-        /// one that answers true has behaviour that must survive, so it stays an ordinary state and a
-        /// root is created above it instead.
-        /// </remarks>
-        public bool HasExecutableContent() =>
-            BlockCount > 0 || ResolveReactions().Count > 0 || ResolveIncoming().Count > 0;
-
-        /// <summary>
-        /// Reads the <c>Is Root</c> flag of a graph written before the root became its own node kind.
-        /// </summary>
-        /// <remarks>
-        /// The option is no longer declared, so Graph Toolkit drops it the next time it defines the
-        /// node. Whether it is still readable in between depends on when that reconciliation happens,
-        /// which is why migration treats this as a hint and can identify a legacy root without it.
-        /// </remarks>
-        /// <returns>False when the flag is not readable, which is the normal case for a current graph.</returns>
-        public bool TryReadLegacyRootFlag(out bool isRoot)
-        {
-            isRoot = false;
-
-            var option = GetNodeOptionByName(LegacyRootOption);
-            if (option == null)
-            {
-                return false;
-            }
-
-            return option.TryGetValue(out isRoot);
-        }
-
-        /// <summary>Name the removed root flag was declared under, kept only so migration can look for it.</summary>
-        internal const string LegacyRootOption = "isRoot";
-
         /// <summary>Blocks of this state grouped by the phase they run in, in stack order.</summary>
         public List<FyniteActionBlockNode> BlocksOfPhase(FynitePhase phase)
         {
@@ -273,28 +241,5 @@ namespace Fynite.GraphEditor
                 .Build();
         }
 
-        /// <inheritdoc />
-        protected override void OnDefineOptions(IOptionDefinitionContext context)
-        {
-            // There is deliberately no "Is Root" here. The root is its own node kind, so a state cannot
-            // become one by ticking a box and a graph cannot acquire a second root by ticking two.
-            context.AddOption<bool>(InitialOption)
-                .WithDisplayName("Initial")
-                .WithTooltip("The Initial state is the first direct child entered when its Parent becomes active. Use Set as Initial to change it.")
-                .Build();
-        }
-
-        private bool ReadFlag(string option)
-        {
-            var value = GetNodeOptionByName(option);
-            if (value == null)
-            {
-                return false;
-            }
-
-            bool flag = false;
-            value.TryGetValue(out flag);
-            return flag;
-        }
     }
 }

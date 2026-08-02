@@ -23,21 +23,9 @@ namespace Fynite.GraphEditor
     public static class FyniteGraphValidation
     {
         /// <summary>Validates a graph and reports through Graph Toolkit's logger.</summary>
-        public static void Report(FyniteGraph graph, GraphLogger logger) =>
-            Report(graph, logger, FyniteGraphMigrationResult.None);
-
-        /// <summary>Validates a graph, also reporting what a migration pass had to say.</summary>
-        public static void Report(FyniteGraph graph, GraphLogger logger, FyniteGraphMigrationResult migration)
+        public static void Report(FyniteGraph graph, GraphLogger logger)
         {
             var byGuid = IndexNodes(graph);
-
-            if (migration != null)
-            {
-                for (int i = 0; i < migration.Diagnostics.Count; i++)
-                {
-                    Emit(migration.Diagnostics[i], byGuid, logger);
-                }
-            }
 
             ReportStructuralProblems(graph, logger);
 
@@ -96,14 +84,6 @@ namespace Fynite.GraphEditor
                             "other root instead.",
                             root);
                     }
-                }
-
-                if (node is FyniteConfigNode legacy)
-                {
-                    logger.LogError(
-                        "This is a settings node from an older Fynite. The context type is now a property " +
-                        "of the graph, edited in the .fyn inspector. Set it there and delete this node.",
-                        legacy);
                 }
 
                 if (node is FyniteSignalNode signal && signal.HasUnresolvedScriptPayload())
