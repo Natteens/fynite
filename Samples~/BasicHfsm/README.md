@@ -22,16 +22,19 @@ Root
 | `Moving` + `Stop`     | → `Idle`                                          |
 | `Moving` + `Notify`   | no transition; the effect reads the payload       |
 
-Blocks used: `LogAction` on enter and exit of both states (four occurrences, each with its own
-configured message), `AdvanceAction` on tick, `FixedStepAction` on fixed tick, `CanMoveGuard` as a
-guard and `NoteAction` as the effect of the reaction without a target.
+Blocks used: `LogAction` five times, each with its own configured message — on enter and exit of both
+states, plus once as the effect of `Idle` + `Move`; `AdvanceAction` on tick and `FixedStepAction` on
+fixed tick of `Moving`; `CanMoveGuard` as a guard; and `NoteAction` as the effect of the reaction
+without a target.
 
 ## Trying it
 
 1. Import the sample from the Package Manager.
 2. Open `Patrol.fyn` to see the graph.
 3. Create an empty GameObject and add **Patrol Context**, **Fynite Runner** and **Patrol Driver**.
-4. Drag `Patrol.fyn` onto the runner's *Graph* field and the Patrol Context onto its *Context* field.
+4. Drag `Patrol.fyn` onto the runner's *Graph* field. *Context Mode* stays on **Auto**, so the runner
+   picks up the Patrol Context on the same GameObject and serializes it — the *Context* field is
+   read-only and fills itself in.
 5. Assign the three signals on the driver — each is a dropdown of the graph's signals.
 6. Enter play mode and press <kbd>1</kbd> (Move), <kbd>2</kbd> (Stop) and <kbd>3</kbd> (Notify).
 

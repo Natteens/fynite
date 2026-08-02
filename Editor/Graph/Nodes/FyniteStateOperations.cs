@@ -7,6 +7,19 @@ using UnityEngine;
 namespace Fynite.GraphEditor
 {
     /// <summary>Atomic state authoring operations implemented through Graph Toolkit's public graph API.</summary>
+    /// <remarks>
+    /// <para>
+    /// Every operation here edits the real nodes of a loaded <see cref="FyniteGraph"/>. There is no
+    /// second model, no staged copy and no shadow hierarchy: what these methods change is what
+    /// <see cref="FyniteGraphProjection"/> reads and what the importer compiles.
+    /// </para>
+    /// <para>
+    /// The Initial mark is maintained here rather than exposed as a field the user ticks, because it is
+    /// an invariant of a parent and not a property of a child: a composite has exactly one, a leaf has
+    /// none, and no sequence of these operations may leave a composite without one. Every method below
+    /// that can disturb that invariant repairs it before returning.
+    /// </para>
+    /// </remarks>
     public static class FyniteStateOperations
     {
         public static bool Rename(FyniteGraph graph, FyniteStateNode state, string name)
@@ -22,10 +35,22 @@ namespace Fynite.GraphEditor
                 return false;
             }
 
+            // A rename writes a serialized field and nothing else — no node appears, no wire moves — so
+            // it is one of the edits Graph Toolkit's change model does not see on its own.
+            graph.UndoBeginRecordGraph("Rename State");
             state.SetDisplayName(normalized);
+            graph.TouchForFieldChange();
+            graph.UndoEndRecordGraph();
             return true;
         }
 
+        /// <summary>
+        /// Makes this state the one its parent enters by default.
+        /// </summary>
+        /// <remarks>
+        /// Only the direct siblings are cleared. The mark means "the child this parent enters", so a
+        /// state deeper in the tree holding it for its own parent is unrelated and must survive.
+        /// </remarks>
         public static bool SetAsInitial(FyniteGraph graph, FyniteStateNode selected)
         {
             var parent = selected?.ResolveParent();
@@ -35,10 +60,15 @@ namespace Fynite.GraphEditor
             }
 
             var siblings = ChildrenOf(parent);
+
+            graph.UndoBeginRecordGraph("Set as Initial");
             for (int i = 0; i < siblings.Count; i++)
             {
                 siblings[i].SetInitial(siblings[i] == selected);
             }
+
+            graph.TouchForFieldChange();
+            graph.UndoEndRecordGraph();
             return true;
         }
 
@@ -57,7 +87,13 @@ namespace Fynite.GraphEditor
             child.SetDisplayName(NextDefaultName(existing));
             child.Position = position;
             graph.Connect(ChildrenPort(parent), child.GetInputPortByName(FyniteStateNode.ParentPort));
-            child.SetInitial(existing.Count == 0);
+
+            // The first child of a parent becomes Initial because a composite without one does not
+            // compile. A later child never displaces it. The condition is written as "the parent has no
+            // Initial yet" rather than "the parent has no children yet" so that a hierarchy wired by
+            // hand on the canvas — which cannot mark anything Initial — is repaired by the first
+            // controlled child added to it, instead of staying uncompilable.
+            child.SetInitial(!HasInitial(existing));
             graph.UndoEndRecordGraph();
             return child;
         }
@@ -91,8 +127,12 @@ namespace Fynite.GraphEditor
                 return false;
             }
 
-            bool firstAtDestination = ChildrenOf(newParent).Count == 0;
+            // Read the destination before rewiring: once the state is connected it counts as one of its
+            // own siblings, and "does this parent already have an Initial" would answer about the state
+            // being moved.
+            bool destinationNeedsInitial = !HasInitial(ChildrenOf(newParent));
             var oldParent = state.ResolveParent();
+            bool wasInitial = state.IsInitial;
 
             graph.UndoBeginRecordGraph("Move to Parent");
             if (oldParent != null)
@@ -101,11 +141,77 @@ namespace Fynite.GraphEditor
             }
 
             graph.Connect(ChildrenPort(newParent), state.GetInputPortByName(FyniteStateNode.ParentPort));
-            // Moving an Initial into a group that already has one must not duplicate Initial. A first
-            // child, however, always becomes Initial as part of this explicit edit.
-            state.SetInitial(firstAtDestination);
+
+            // Moving an Initial into a group that already has one must not produce two. Moving into an
+            // empty group — or one whose Initial is missing — makes the moved state Initial, because
+            // otherwise this edit would create a composite that cannot be entered.
+            state.SetInitial(destinationNeedsInitial);
+
+            // The move can strip the old parent of its Initial while leaving it composite. Nothing else
+            // would put one back, and the graph would stop compiling because of an edit made somewhere
+            // else entirely, so the successor is chosen here.
+            if (wasInitial)
+            {
+                RepairInitial(graph, oldParent);
+            }
+
             graph.UndoEndRecordGraph();
             return true;
+        }
+
+        /// <summary>
+        /// Gives a parent an Initial child again when it still has children but lost the one it had.
+        /// </summary>
+        /// <remarks>
+        /// A parent left with no children needs nothing: it is a leaf, and a leaf with an Initial is
+        /// itself an error. A parent that still has children gets the first of them in the order
+        /// <see cref="Graph.GetNodes"/> reports, which is the order the projection walks and therefore
+        /// the order the compiler already calls "first". That order is serialized with the file, so the
+        /// same move on the same graph always elects the same successor.
+        /// </remarks>
+        private static void RepairInitial(FyniteGraph graph, IFyniteIdentifiedNode parent)
+        {
+            if (graph == null || parent == null)
+            {
+                return;
+            }
+
+            var remaining = ChildrenOf(parent);
+            if (remaining.Count == 0 || HasInitial(remaining))
+            {
+                return;
+            }
+
+            var successor = FirstInGraphOrder(graph, remaining);
+            successor?.SetInitial(true);
+        }
+
+        /// <summary>True when one of these siblings is already the Initial child.</summary>
+        private static bool HasInitial(List<FyniteStateNode> siblings)
+        {
+            for (int i = 0; i < siblings.Count; i++)
+            {
+                if (siblings[i].IsInitial)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>The candidate the graph stores first, so the choice never depends on wiring order.</summary>
+        private static FyniteStateNode FirstInGraphOrder(FyniteGraph graph, List<FyniteStateNode> candidates)
+        {
+            foreach (var node in graph.GetNodes())
+            {
+                if (node is FyniteStateNode state && candidates.Contains(state))
+                {
+                    return state;
+                }
+            }
+
+            return candidates.Count > 0 ? candidates[0] : null;
         }
 
         public static FyniteStateNode Duplicate(FyniteGraph graph, FyniteStateNode source, Vector2 position)
@@ -122,6 +228,10 @@ namespace Fynite.GraphEditor
             duplicate.SetDisplayName(source.StateName);
             duplicate.Position = position;
             graph.Connect(ChildrenPort(parent), duplicate.GetInputPortByName(FyniteStateNode.ParentPort));
+
+            // The copy is a sibling, never a second Initial. It also gets its own identity — the node was
+            // constructed rather than cloned, so nothing carried the source's GUID across — which is what
+            // keeps reactions and external references pointing at the state they were authored against.
             duplicate.SetInitial(false);
             graph.UndoEndRecordGraph();
             return duplicate;
@@ -137,13 +247,95 @@ namespace Fynite.GraphEditor
             return parent is FyniteStateNode state ? state.ResolveChildren() : new List<FyniteStateNode>();
         }
 
-        public static List<FyniteStateNode> ValidParents(FyniteGraph graph, FyniteStateNode state)
+        /// <summary>
+        /// Every node this state could legally be parented to, ordered by path.
+        /// </summary>
+        /// <remarks>
+        /// The root is included: reparenting a state to the top level is an ordinary edit, and a list
+        /// that left it out would make the one hierarchy every graph has unreachable. The state itself
+        /// and everything below it are excluded, which is what makes self-parenting and cycles
+        /// unofferable rather than merely refused.
+        /// </remarks>
+        public static List<IFyniteIdentifiedNode> ValidParents(FyniteGraph graph, FyniteStateNode state)
         {
-            var result = graph.GetNodes().OfType<FyniteStateNode>()
-                .Where(candidate => candidate != state && !IsDescendantOf(candidate, state))
+            if (graph == null || state == null)
+            {
+                return new List<IFyniteIdentifiedNode>();
+            }
+
+            return graph.GetNodes()
+                .Select(node => node as IFyniteIdentifiedNode)
+                .Where(candidate =>
+                    candidate is FyniteRootStateNode ||
+                    (candidate is FyniteStateNode s && s != state && !IsDescendantOf(s, state)))
                 .OrderBy(PathOf, StringComparer.Ordinal)
                 .ToList();
-            return result;
+        }
+
+        /// <summary>
+        /// States that are not connected to any parent.
+        /// </summary>
+        /// <remarks>
+        /// An orphan is not a shape the hierarchy allows: it belongs to no machine, the compiler warns
+        /// about it, and dragging a wire is the only other way out. Listing them is what lets the
+        /// authoring surface offer the state a home instead of the user hunting for a node that may be
+        /// anywhere on the canvas.
+        /// </remarks>
+        public static List<FyniteStateNode> Orphans(FyniteGraph graph)
+        {
+            if (graph == null)
+            {
+                return new List<FyniteStateNode>();
+            }
+
+            return graph.GetNodes()
+                .OfType<FyniteStateNode>()
+                .Where(state => state.ResolveParent() == null)
+                .ToList();
+        }
+
+        /// <summary>The state carrying this identity, or null when the graph has none.</summary>
+        public static FyniteStateNode FindState(FyniteGraph graph, string fyniteGuid)
+        {
+            if (graph == null || string.IsNullOrEmpty(fyniteGuid))
+            {
+                return null;
+            }
+
+            foreach (var node in graph.GetNodes())
+            {
+                if (node is FyniteStateNode state && string.Equals(state.FyniteGuid, fyniteGuid, StringComparison.Ordinal))
+                {
+                    return state;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>The node carrying this identity when it can hold children, or null.</summary>
+        public static IFyniteIdentifiedNode FindParentTarget(FyniteGraph graph, string fyniteGuid)
+        {
+            if (graph == null || string.IsNullOrEmpty(fyniteGuid))
+            {
+                return null;
+            }
+
+            foreach (var node in graph.GetNodes())
+            {
+                if (!(node is IFyniteIdentifiedNode identified) ||
+                    !string.Equals(identified.FyniteGuid, fyniteGuid, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (identified is FyniteRootStateNode || identified is FyniteStateNode)
+                {
+                    return identified;
+                }
+            }
+
+            return null;
         }
 
         public static string PathOf(IFyniteIdentifiedNode node)

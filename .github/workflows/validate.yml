@@ -1,0 +1,41 @@
+name: validate
+
+# The checks that need no Unity, no licence and no secrets, so they can run on every push and every
+# pull request. They prove the package is shaped correctly — never that it behaves correctly. The
+# behaviour is the Unity suites' job, and release.yml requires those separately.
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+    inputs:
+      release_mode:
+        description: 'Also apply the rules that only make sense for a revision about to be tagged.'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Static validation
+    runs-on: ubuntu-latest
+
+    steps:
+      # Tags are part of what is checked: the version/tag agreement, the changelog headings and the
+      # schema-versus-importer rule all read the previous release.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate package
+        run: |
+          if [ "${{ inputs.release_mode }}" = "true" ]; then
+            python3 .github/scripts/validate_package.py --release
+          else
+            python3 .github/scripts/validate_package.py
+          fi

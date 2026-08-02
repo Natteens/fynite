@@ -138,11 +138,15 @@ namespace Fynite.Authoring
         /// <summary>The document was written by a newer Fynite than this one.</summary>
         public const string SchemaVersionFromFuture = "FYN0102";
 
-        /// <summary>The document uses a schema other than the current one.</summary>
-        public const string SchemaVersionUnsupported = "FYN0103";
+        // FYN0103 is retired. It meant "the document was migrated from an older schema version" up to
+        // 0.5.0; migration is gone, and reusing the number would make an old console log or bug report
+        // read as an error it never was.
 
         /// <summary>The document could not be read at all.</summary>
         public const string SchemaUnreadable = "FYN0104";
+
+        /// <summary>The document uses a schema other than the current one.</summary>
+        public const string SchemaVersionUnsupported = "FYN0105";
 
         // Graph — 02xx
         /// <summary>The graph declares no states.</summary>

@@ -127,11 +127,22 @@ namespace Fynite.GraphEditor
             return reference.IsSet ? FyniteTypeResolver.Resolve(reference) : null;
         }
 
-        /// <inheritdoc />
-        public override void OnEnable()
+        /// <summary>
+        /// Reports a change Graph Toolkit's own change model does not see.
+        /// </summary>
+        /// <remarks>
+        /// Graph Toolkit notices structural edits — nodes added, wires connected — because those go
+        /// through its API. A serialized field owned by a Fynite node or by this graph is deliberately
+        /// outside that model, so an edit that only writes one can be left out of the save. Touching the
+        /// public model without leaving anything behind puts the change back on its radar. No internal
+        /// API and no reflection is involved: this is <see cref="AddNode"/> and <see cref="RemoveNode"/>,
+        /// and the graph it returns to the caller is byte-for-byte the one it received.
+        /// </remarks>
+        public void TouchForFieldChange()
         {
-            base.OnEnable();
-
+            var marker = new FyniteRootStateNode();
+            AddNode(marker);
+            RemoveNode(marker);
         }
 
         /// <inheritdoc />

@@ -42,7 +42,12 @@ namespace Fynite.Tests
             var root = graph.FindRoot();
 
             Assert.AreEqual(FyniteRootStateNode.RootName, root.Title);
-            Assert.IsFalse(root is FyniteStateNode);
+
+            // The canvas can rename any node's header. The root takes its name back, so a rename there
+            // is a no-op instead of a second name for the same structural node.
+            root.Title = "Renamed";
+            root.RefreshLabels();
+            Assert.AreEqual(FyniteRootStateNode.RootName, root.Title);
         }
 
         [Test]
