@@ -13,8 +13,6 @@ namespace Fynite.GraphEditor
     public sealed class FyniteGraphImporterEditor : ScriptedImporterEditor
     {
         private FyniteGraphInspectorSession _session;
-        private FyniteStateAuthoringSession _authoring;
-        private readonly FyniteStateAuthoringGUI _authoringGUI = new FyniteStateAuthoringGUI();
 
         /// <inheritdoc />
         public override void OnEnable()
@@ -59,24 +57,6 @@ namespace Fynite.GraphEditor
                 MessageType.Info);
 
             EditorGUILayout.Space();
-
-            // The state commands run against the file immediately, while the Context Type above is
-            // staged behind Apply/Revert. Letting both be pending at once would make Revert ambiguous —
-            // it would have to undo a graph edit that is already on disk — so the commands wait until
-            // the staged change is resolved one way or the other.
-            bool contextPending = _session.HasChanges;
-
-            if (contextPending)
-            {
-                EditorGUILayout.HelpBox(
-                    "Apply or Revert the Context Type before running state commands. The commands write " +
-                    "the .fyn file directly, so they cannot be reverted together with a staged setting.",
-                    MessageType.Info);
-            }
-
-            _authoringGUI.Draw(_authoring, !contextPending);
-
-            EditorGUILayout.Space();
             var asset = AssetDatabase.LoadAssetAtPath<FyniteGraphAsset>(_session.AssetPath);
             FyniteGraphAssetSummary.Draw(asset);
         }
@@ -117,12 +97,6 @@ namespace Fynite.GraphEditor
             var importer = target as AssetImporter;
             _session = importer != null
                 ? FyniteGraphInspectorSession.Load(importer.assetPath)
-                : null;
-
-            // Both sessions drive the same loaded graph. Two loads of one file would be two objects the
-            // user could edit into disagreement, with the last save silently winning.
-            _authoring = _session != null
-                ? FyniteStateAuthoringSession.For(_session.AssetPath, _session.Graph)
                 : null;
         }
     }

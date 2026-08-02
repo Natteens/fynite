@@ -11,14 +11,14 @@ Este pacote pode ser instalado através do Unity Package Manager usando a URL do
 último release e ainda assim conter código diferente. Dois projetos instalados em dias
 diferentes receberiam revisões distintas sob o mesmo `version`, e o Package Manager não avisa.
 
-A última versão publicada é **`v0.5.0`**.
+A última versão publicada é **`v0.6.0`**.
 
 ### Via Package Manager (Recomendado)
 
 1. Abra o Package Manager (Window > Package Manager)
 2. Clique no botão **+** no canto superior esquerdo
 3. Selecione **"Add package from git URL..."**
-4. Digite a URL: `https://github.com/Natteens/fynite.git#v0.5.0`
+4. Digite a URL: `https://github.com/Natteens/fynite.git#v0.6.0`
 5. Clique em **Add**
 
 ### Via manifest.json
@@ -28,12 +28,12 @@ Adicione a seguinte linha ao arquivo `Packages/manifest.json` do seu projeto:
 ```json
 {
   "dependencies": {
-    "com.natteens.fynite": "https://github.com/Natteens/fynite.git#v0.5.0"
+    "com.natteens.fynite": "https://github.com/Natteens/fynite.git#v0.6.0"
   }
 }
 ```
 
-Troque `v0.5.0` pela tag desejada ao atualizar. As tags publicadas estão em
+Troque `v0.6.0` pela tag desejada ao atualizar. As tags publicadas estão em
 [Releases](https://github.com/Natteens/fynite/releases).
 
 ## 🚀 Como Usar
@@ -156,62 +156,30 @@ Todo estado composto precisa de exatamente um filho marcado como inicial; sem is
 com `FYN0409` e diz qual estado não sabe para onde entrar. O estado marcado exibe `initial` no
 subtítulo do node.
 
-A marcação **não é um checkbox no node**, e não é editável pelo canvas: ela é invariante de um pai —
-um composto tem exatamente uma, uma folha não tem nenhuma — e não uma propriedade que cada filho ligue
-por conta própria. Quem a define é a seção **State Authoring**, descrita abaixo.
+A marcação **não é um checkbox no node**: ela é invariante de um pai — um composto tem exatamente uma,
+uma folha não tem nenhuma — e não uma propriedade que cada filho ligue por conta própria. Quem a mantém
+são as operações de authoring `FyniteStateOperations`, que a corrigem a cada edição: o primeiro filho de
+um pai vira o inicial, mover o inicial para fora elege deterministicamente um sucessor entre os irmãos
+restantes, e um pai que fica sem filhos vira folha e não precisa de nenhum.
 
-### State Authoring (inspector do `.fyn`)
+**Nome do estado**
 
-Selecione o `.fyn` na Project window. Abaixo de *Graph Settings* há uma seção de comandos que operam
-sobre o graph real:
+Selecione o State no canvas e o **Graph Inspector** do Graph Toolkit mostra um campo `Name`, junto do
+Subtitle. O default é `State`. Confirmar o campo atualiza o título do node na hora — sem selecionar o
+`.fyn` na Project window, sem Apply/Revert e sem reimport.
 
-| Campo / botão | O que faz |
-| --- | --- |
-| **State** | Escolhe o estado que os comandos abaixo afetam. A lista mostra o caminho completo e a escolha é guardada por GUID, então renomear não troca a seleção. |
-| **Path** / **Role** | Somente leitura: onde o estado está e o que ele é (`composite`/`leaf`, `initial child of …`, `no parent`). |
-| **Name** + **Rename** | Renomeia. GUID, fios, reactions e posição ficam como estavam. |
-| **Set as Initial** | Torna o estado o filho que o pai entra. Limpa a marca apenas dos irmãos diretos. |
-| **Add Child** | Cria um estado dentro do selecionado. O primeiro filho de um pai vira o inicial; os seguintes, não. |
-| **Duplicate** | Cria um irmão com identidade nova. A cópia nunca herda a marca de inicial. |
-| **Move Under** + **Move** | Reparenta. A lista oferece só nodes que não formam ciclo, e nada é escolhido por você: sem seleção explícita o botão não roda. |
-| **Unparented States** | Lista os estados ligados a pai nenhum e permite dar um pai a cada um. |
+O nome é só um rótulo: GUID, Parent, Children, reactions, blocks e posição ficam exatamente como
+estavam. Renomear nunca quebra um fio nem uma referência externa.
 
-Cada comando bem-sucedido grava o `.fyn` e reimporta o arquivo, então o asset compilado logo abaixo
-sempre descreve o graph como ele está agora.
+O campo é *delayed*: ele aplica ao pressionar Enter ou ao sair do campo, não a cada tecla. Cada
+mudança revalida o graph inteiro pelo compilador para pôr os diagnósticos nos nodes certos, e fazer
+isso por caractere digitado deixaria a digitação pesada.
 
-Mover o filho inicial para fora de um pai que ainda tem outros filhos **não deixa o pai sem inicial**:
-o sucessor é o primeiro filho restante na ordem em que o graph guarda seus nodes — a mesma ordem que o
-compilador lê — e portanto é sempre o mesmo para o mesmo graph. Um pai que fica sem nenhum filho vira
-folha e não precisa de inicial.
-
-**O que essa seção não é.** Ela é um formulário no inspector, não um segundo editor: não desenha
-nodes, edges, cards nem árvore, não mantém cópia do graph e não tem integração com o canvas. Abrir uma
-não muda a seleção da outra, e o canvas precisa ser reaberto para mostrar edições feitas aqui. Ela
-existe porque o menu de contexto, o pipeline de comandos e a seleção do Graph Toolkit não são
-extensíveis por um package, então marcar um filho como inicial ou reparentar uma subárvore não têm
-onde morar no canvas.
-
-**Undo.** Esses comandos **não são desfazíveis**, e Fynite não declara que sejam.
-
-As operações são gravadas com `UndoBeginRecordGraph`/`UndoEndRecordGraph`, a única API pública de
-gravação do Graph Toolkit. Medido no Unity 6000.5.6f1 (`StateAuthoringUndoTests`), um
-`Undo.PerformUndo()` depois de cada comando **não reverte nada**:
-
-| Comando | O que o undo deveria desfazer | Resultado medido |
-| --- | --- | --- |
-| Add Child | remover o node criado | node continua no graph |
-| Rename | restaurar o nome anterior | nome novo permanece |
-| Set as Initial | devolver a marca ao irmão | marca nova permanece |
-| Move | restaurar o fio de parent e as marcas | estado continua no destino |
-
-Ou seja: o escopo de gravação do Graph Toolkit não cobre nem os campos serializados declarados por um
-node derivado (nome, GUID, marca de inicial) nem as edições estruturais feitas dentro dele. Os testes
-verificam **incondicionalmente** que um undo nunca deixa o graph incoerente — nenhum pai com dois
-filhos iniciais, nenhum estado sem identidade — e isso continua valendo; o que não existe é reversão.
-
-Na prática: **desfazer é reexecutar o comando inverso**. A superfície oferece todos eles (mover de
-volta, renomear de volta, remarcar o inicial anterior), e cada comando grava o `.fyn`, então o
-histórico real do arquivo é o seu controle de versão.
+**Undo.** Renomear pelo Graph Inspector entra no Undo do Graph Toolkit, porque quem grava o valor é
+uma node option dele. Já as operações de hierarquia chamadas por código (`CreateChild`, `MoveToParent`,
+`SetAsInitial`, `Duplicate`) **não são desfazíveis**: medido no Unity 6000.5.6f1, o escopo de
+`UndoBeginRecordGraph` não restaura nem os campos serializados declarados por um node derivado nem as
+edições estruturais feitas dentro dele.
 
 **Identidade**
 

@@ -40,6 +40,9 @@ namespace Fynite.GraphEditor
 
         public const string DefaultName = "State";
 
+        /// <summary>Identifier of the node option the Graph Inspector edits the name through.</summary>
+        public const string NameOption = "Name";
+
         [SerializeField]
         [HideInInspector]
         private string m_FyniteGuid;
@@ -47,6 +50,21 @@ namespace Fynite.GraphEditor
         [SerializeField]
         [HideInInspector]
         private string m_DisplayName;
+
+        /// <summary>
+        /// The last value read out of the <see cref="NameOption"/> option.
+        /// </summary>
+        /// <remarks>
+        /// Graph Toolkit lets a package read a node option and never write one: <c>INodeOption</c>
+        /// exposes <c>TryGetValue</c> and no setter. So the option cannot mirror the stored name, and
+        /// "which of the two is newer" cannot be answered by comparing them — after a rename from code
+        /// they simply differ, with no way to tell which side moved. Remembering what the option said
+        /// last time answers it exactly: if it changed, the user typed in the inspector and that wins;
+        /// if it did not, the stored name moved and the option is merely stale.
+        /// </remarks>
+        [SerializeField]
+        [HideInInspector]
+        private string m_ObservedNameOption;
 
         [SerializeField]
         [HideInInspector]
@@ -94,8 +112,66 @@ namespace Fynite.GraphEditor
             Title = m_DisplayName;
         }
 
-        /// <summary>Reconciles the canvas title and the persisted name.</summary>
-        public void SyncDisplayName() => FyniteDisplayNames.Sync(this, ref m_DisplayName, DefaultName);
+        /// <summary>
+        /// Reconciles the name the user typed, the stored name and the canvas title.
+        /// </summary>
+        /// <remarks>
+        /// Runs from <see cref="FyniteGraph.OnGraphChanged"/>, which Graph Toolkit raises after any edit
+        /// it owns — including a node option changed in the Graph Inspector. That is what makes the
+        /// header follow the field as it is typed, with no reimport and no Asset Database call.
+        /// </remarks>
+        public void SyncDisplayName()
+        {
+            if (TryReadNameOption(out var typed))
+            {
+                if (m_ObservedNameOption == null)
+                {
+                    // First sight of the option on this node. Whatever it holds came from the default,
+                    // not from anyone typing, and a graph saved before this option existed carries its
+                    // name in the stored field alone — so record and adopt nothing.
+                    m_ObservedNameOption = typed ?? string.Empty;
+                }
+                else if (!string.Equals(typed, m_ObservedNameOption, StringComparison.Ordinal))
+                {
+                    m_ObservedNameOption = typed;
+
+                    // An emptied field means "no name", not a state literally called nothing.
+                    m_DisplayName = string.IsNullOrWhiteSpace(typed) ? DefaultName : typed.Trim();
+                    Title = m_DisplayName;
+                    return;
+                }
+            }
+
+            FyniteDisplayNames.Sync(this, ref m_DisplayName, DefaultName);
+        }
+
+        /// <summary>Reads the Graph Inspector's Name field, or false when the option is not defined yet.</summary>
+        private bool TryReadNameOption(out string value)
+        {
+            value = null;
+            var option = GetNodeOptionByName(NameOption);
+            return option != null && option.TryGetValue(out value);
+        }
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// One string option, shown only in the Graph Inspector. It is deliberately not in the node
+        /// header: the header already shows the name as the title, and a second editable copy of it
+        /// sitting on the node is the kind of duplicate surface this replaced.
+        /// </remarks>
+        protected override void OnDefineOptions(IOptionDefinitionContext context)
+        {
+            base.OnDefineOptions(context);
+
+            context.AddOption<string>(NameOption)
+                .WithDisplayName("Name")
+                .WithTooltip("The label this state is known by. Renaming never changes its identity, " +
+                             "its parent, its reactions or anything wired to it.")
+                .WithDefaultValue(StateName)
+                .ShowInInspectorOnly()
+                .Delayed()
+                .Build();
+        }
 
         /// <inheritdoc />
         public override void OnEnable()

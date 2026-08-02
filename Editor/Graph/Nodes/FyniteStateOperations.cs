@@ -247,53 +247,6 @@ namespace Fynite.GraphEditor
             return parent is FyniteStateNode state ? state.ResolveChildren() : new List<FyniteStateNode>();
         }
 
-        /// <summary>
-        /// Every node this state could legally be parented to, ordered by path.
-        /// </summary>
-        /// <remarks>
-        /// The root is included: reparenting a state to the top level is an ordinary edit, and a list
-        /// that left it out would make the one hierarchy every graph has unreachable. The state itself
-        /// and everything below it are excluded, which is what makes self-parenting and cycles
-        /// unofferable rather than merely refused.
-        /// </remarks>
-        public static List<IFyniteIdentifiedNode> ValidParents(FyniteGraph graph, FyniteStateNode state)
-        {
-            if (graph == null || state == null)
-            {
-                return new List<IFyniteIdentifiedNode>();
-            }
-
-            return graph.GetNodes()
-                .Select(node => node as IFyniteIdentifiedNode)
-                .Where(candidate =>
-                    candidate is FyniteRootStateNode ||
-                    (candidate is FyniteStateNode s && s != state && !IsDescendantOf(s, state)))
-                .OrderBy(PathOf, StringComparer.Ordinal)
-                .ToList();
-        }
-
-        /// <summary>
-        /// States that are not connected to any parent.
-        /// </summary>
-        /// <remarks>
-        /// An orphan is not a shape the hierarchy allows: it belongs to no machine, the compiler warns
-        /// about it, and dragging a wire is the only other way out. Listing them is what lets the
-        /// authoring surface offer the state a home instead of the user hunting for a node that may be
-        /// anywhere on the canvas.
-        /// </remarks>
-        public static List<FyniteStateNode> Orphans(FyniteGraph graph)
-        {
-            if (graph == null)
-            {
-                return new List<FyniteStateNode>();
-            }
-
-            return graph.GetNodes()
-                .OfType<FyniteStateNode>()
-                .Where(state => state.ResolveParent() == null)
-                .ToList();
-        }
-
         /// <summary>The state carrying this identity, or null when the graph has none.</summary>
         public static FyniteStateNode FindState(FyniteGraph graph, string fyniteGuid)
         {
@@ -307,31 +260,6 @@ namespace Fynite.GraphEditor
                 if (node is FyniteStateNode state && string.Equals(state.FyniteGuid, fyniteGuid, StringComparison.Ordinal))
                 {
                     return state;
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>The node carrying this identity when it can hold children, or null.</summary>
-        public static IFyniteIdentifiedNode FindParentTarget(FyniteGraph graph, string fyniteGuid)
-        {
-            if (graph == null || string.IsNullOrEmpty(fyniteGuid))
-            {
-                return null;
-            }
-
-            foreach (var node in graph.GetNodes())
-            {
-                if (!(node is IFyniteIdentifiedNode identified) ||
-                    !string.Equals(identified.FyniteGuid, fyniteGuid, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                if (identified is FyniteRootStateNode || identified is FyniteStateNode)
-                {
-                    return identified;
                 }
             }
 
