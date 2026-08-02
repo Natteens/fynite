@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/Natteens/fynite/compare/v0.2.0...v0.2.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* Enforce guard purity and harden machine lifecycle ([500641a](https://github.com/Natteens/fynite/commit/500641a595dc2a847323e588d6e0279b50ece85a))
+
 # [0.2.0](https://github.com/Natteens/fynite/compare/v0.1.0...v0.2.0) (2026-08-02)
 
 
