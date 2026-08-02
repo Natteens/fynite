@@ -1,8 +1,8 @@
 {
   "name": "com.natteens.fynite",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "Fynite",
-  "description": "Hierarchical State Machine pronta para integra\u00e7\u00e3o r\u00e1pida em projetos Unity.",
+  "description": "Hierarchical State Machine pronta para integração rápida em projetos Unity.",
   "keywords": [
     "Unity",
     "GameDev",

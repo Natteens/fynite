@@ -1,3 +1,10 @@
+# [0.2.0](https://github.com/Natteens/fynite/compare/v0.1.0...v0.2.0) (2026-08-02)
+
+
+### Features
+
+* Add Fynite core runtime, Unity layer, and tests ([cc46f00](https://github.com/Natteens/fynite/commit/cc46f0022ca1e364702f14790b122de7f9d0eb61))
+
 # 📝 Changelog
 
 Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
