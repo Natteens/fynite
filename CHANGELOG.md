@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/Natteens/fynite/compare/v0.2.1...v0.3.0) (2026-08-02)
+
+
+### Features
+
+* Add .fyn graph authoring and compilation pipeline ([e20d552](https://github.com/Natteens/fynite/commit/e20d552058dafb91fa4a6fa42896cc53c0949acc))
+
 ## [0.2.1](https://github.com/Natteens/fynite/compare/v0.2.0...v0.2.1) (2026-08-02)
 
 
