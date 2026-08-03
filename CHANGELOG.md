@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/Natteens/fynite/compare/v0.8.0...v0.9.0) (2026-08-03)
+
+
+### Features
+
+* Add hierarchical state machine support ([24d1041](https://github.com/Natteens/fynite/commit/24d1041b93f4d8f4f22b96b107629bfcd14f5e73))
+
 # [0.8.0](https://github.com/Natteens/fynite/compare/v0.7.0...v0.8.0) (2026-08-03)
 
 
