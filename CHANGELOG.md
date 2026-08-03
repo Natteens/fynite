@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/Natteens/fynite/compare/v0.7.0...v0.8.0) (2026-08-03)
+
+
+### Features
+
+* Rewrite Fynite as code-first PlayerLoop FSM ([81d4c12](https://github.com/Natteens/fynite/commit/81d4c122960573f79fac7b77a9a237fa64c9a2b2))
+
 # [0.7.0](https://github.com/Natteens/fynite/compare/v0.6.0...v0.7.0) (2026-08-02)
 
 
