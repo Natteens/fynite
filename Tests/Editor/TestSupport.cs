@@ -12,6 +12,11 @@ namespace FyniteTests
         public bool ToIdle;
         public bool ToDead;
         public bool ToRun;
+        public bool ToAttack;
+        public bool ToGrounded;
+        public bool ToAirborne;
+        public bool ToLocomotion;
+        public bool ToSelf;
 
         public float LastDelta = float.NaN;
         public float LastFixedDelta = float.NaN;
@@ -20,6 +25,9 @@ namespace FyniteTests
         public Action OnUpdate;
         public Action OnFixedUpdate;
         public Action OnExit;
+
+        /// <summary>A log entry such as "GroundedProbe.Update" that makes that callback throw.</summary>
+        public string ThrowOn;
 
         public string Trace => string.Join(",", Log);
 
@@ -46,31 +54,40 @@ namespace FyniteTests
 
         protected override void Enter()
         {
-            Context.Log.Add(Name + ".Enter");
+            Record("Enter");
             Context.OnEnter?.Invoke();
         }
 
         protected override void Update()
         {
-            Context.Log.Add(Name + ".Update");
+            Record("Update");
             Context.LastDelta = DeltaTime;
             Context.OnUpdate?.Invoke();
         }
 
         protected override void FixedUpdate()
         {
-            Context.Log.Add(Name + ".FixedUpdate");
+            Record("FixedUpdate");
             Context.LastFixedDelta = FixedDeltaTime;
             Context.OnFixedUpdate?.Invoke();
         }
 
         protected override void Exit()
         {
-            Context.Log.Add(Name + ".Exit");
+            Record("Exit");
             Context.OnExit?.Invoke();
         }
 
-        private string Name => GetType().Name;
+        private void Record(string callback)
+        {
+            var entry = GetType().Name + "." + callback;
+            Context.Log.Add(entry);
+
+            if (Context.ThrowOn == entry)
+            {
+                throw new InvalidOperationException("fynite-test-boom");
+            }
+        }
     }
 
     public sealed class IdleProbe : ProbeState

@@ -58,11 +58,13 @@ namespace Fynite
             return this;
         }
 
-        internal FyniteDefinition<TContext> Compile()
+        internal FyniteDefinition<TContext> Compile(FyniteHierarchyBuilder hierarchy)
         {
             sealedForBuild = true;
 
             var stateCount = states.Count;
+            var types = stateTypes.ToArray();
+            var layout = hierarchy.Compile(stateCount, types);
             var globalCount = 0;
             for (var i = 0; i < records.Count; i++)
             {
@@ -109,7 +111,8 @@ namespace Fynite
 
             return new FyniteDefinition<TContext>(
                 states.ToArray(),
-                stateTypes.ToArray(),
+                types,
+                layout,
                 global,
                 local,
                 localStart,

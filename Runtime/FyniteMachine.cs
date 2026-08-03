@@ -16,7 +16,9 @@ namespace Fynite
         private Behaviour ownerBehaviour;
         private GameObject ownerGameObject;
 
-        private int current;
+        private int[] activePath;
+        private int[] pathBuffer;
+        private int activeCount;
         private FyniteMachineStatus status;
         private bool inCycle;
         private int loopSlot = FyniteLoop.Unregistered;
@@ -28,6 +30,10 @@ namespace Fynite
             this.definition = definition;
 
             time = new FyniteTimeSource();
+
+            var capacity = definition.Hierarchy.PathCapacity;
+            activePath = new int[capacity];
+            pathBuffer = new int[capacity];
 
             ownerBehaviour = owner as Behaviour;
             if (ownerBehaviour != null)
@@ -46,15 +52,41 @@ namespace Fynite
 
         public bool IsRunning => status == FyniteMachineStatus.Running;
 
+        /// <summary>
+        /// The deepest active state: the leaf of the active path, or the single active state of a flat
+        /// machine.
+        /// </summary>
         public Type CurrentStateType
-            => status == FyniteMachineStatus.Running ? definition.StateTypes[current] : null;
-
-        public bool IsIn<TState>() where TState : FyniteState<TContext>
-            => status == FyniteMachineStatus.Running && definition.StateTypes[current] == typeof(TState);
+            => status == FyniteMachineStatus.Running
+                ? definition.StateTypes[activePath[activeCount - 1]]
+                : null;
 
         /// <summary>
-        /// Runs <c>Exit</c> on the active state once, unregisters from the PlayerLoop and rejects any
-        /// later use. Safe to call more than once.
+        /// True for every state on the active path, so a superstate still answers true while one of its
+        /// children is the current state.
+        /// </summary>
+        public bool IsIn<TState>() where TState : FyniteState<TContext>
+        {
+            if (status != FyniteMachineStatus.Running)
+            {
+                return false;
+            }
+
+            var type = typeof(TState);
+            for (var i = 0; i < activeCount; i++)
+            {
+                if (definition.StateTypes[activePath[i]] == type)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Runs <c>Exit</c> once on every active state, from the leaf up to the top, unregisters from
+        /// the PlayerLoop and rejects any later use. Safe to call more than once.
         /// </summary>
         public void Dispose()
         {
@@ -70,7 +102,7 @@ namespace Fynite
             {
                 if (wasRunning)
                 {
-                    definition.States[current].InvokeExit();
+                    ExitActivePath();
                 }
             }
             finally
@@ -82,8 +114,6 @@ namespace Fynite
 
         internal void Launch(int startIndex)
         {
-            current = startIndex;
-
             var states = definition.States;
             for (var i = 0; i < states.Length; i++)
             {
@@ -91,10 +121,14 @@ namespace Fynite
             }
 
             status = FyniteMachineStatus.Running;
+            activeCount = ResolvePath(startIndex, activePath);
 
             try
             {
-                states[current].InvokeEnter();
+                for (var i = 0; i < activeCount; i++)
+                {
+                    states[activePath[i]].InvokeEnter();
+                }
             }
             catch
             {
@@ -118,24 +152,19 @@ namespace Fynite
 
             try
             {
-                var target = EvaluateTransitions();
-                if (target >= 0)
+                if (EvaluateTransitions(out var from, out var to) && !Switch(from, to))
                 {
-                    definition.States[current].InvokeExit();
-                    if (status != FyniteMachineStatus.Running)
-                    {
-                        return;
-                    }
+                    return;
+                }
 
-                    current = target;
-                    definition.States[current].InvokeEnter();
+                for (var i = 0; i < activeCount; i++)
+                {
+                    definition.States[activePath[i]].InvokeUpdate();
                     if (status != FyniteMachineStatus.Running)
                     {
                         return;
                     }
                 }
-
-                definition.States[current].InvokeUpdate();
             }
             catch (Exception exception)
             {
@@ -159,7 +188,14 @@ namespace Fynite
 
             try
             {
-                definition.States[current].InvokeFixedUpdate();
+                for (var i = 0; i < activeCount; i++)
+                {
+                    definition.States[activePath[i]].InvokeFixedUpdate();
+                    if (status != FyniteMachineStatus.Running)
+                    {
+                        return;
+                    }
+                }
             }
             catch (Exception exception)
             {
@@ -202,29 +238,129 @@ namespace Fynite
             return ownerGameObject == null || ownerGameObject.activeInHierarchy;
         }
 
-        private int EvaluateTransitions()
+        private int ResolvePath(int target, int[] buffer)
         {
-            var target = Evaluate(definition.Global, 0, definition.Global.Length);
-            if (target >= 0)
+            var hierarchy = definition.Hierarchy;
+            var count = hierarchy.Depth[target] + 1;
+
+            var node = target;
+            for (var i = count - 1; i >= 0; i--)
             {
-                return target;
+                buffer[i] = node;
+                node = hierarchy.Parent[node];
             }
 
-            var start = definition.LocalStart[current];
-            return Evaluate(definition.Local, start, start + definition.LocalCount[current]);
+            var child = hierarchy.InitialChild[target];
+            while (child >= 0)
+            {
+                buffer[count++] = child;
+                child = hierarchy.InitialChild[child];
+            }
+
+            return count;
         }
 
-        private int Evaluate(FyniteTransitionRecord<TContext>[] records, int start, int end)
+        private bool Switch(int from, int to)
         {
-            for (var i = start; i < end; i++)
+            var states = definition.States;
+            var count = ResolvePath(to, pathBuffer);
+
+            var limit = count < activeCount ? count : activeCount;
+            var common = 0;
+            while (common < limit && activePath[common] == pathBuffer[common])
             {
-                if (records[i].Predicate.Evaluate(context))
+                common++;
+            }
+
+            // An explicit self transition, and any transition back into the current leaf, re-enters the
+            // target instead of stopping at it.
+            if (from == to || to == activePath[activeCount - 1])
+            {
+                var depth = definition.Hierarchy.Depth[to];
+                if (common > depth)
                 {
-                    return records[i].To;
+                    common = depth;
                 }
             }
 
-            return -1;
+            while (activeCount > common)
+            {
+                activeCount--;
+                states[activePath[activeCount]].InvokeExit();
+                if (status != FyniteMachineStatus.Running)
+                {
+                    return false;
+                }
+            }
+
+            for (var i = common; i < count; i++)
+            {
+                activePath[i] = pathBuffer[i];
+                activeCount = i + 1;
+                states[activePath[i]].InvokeEnter();
+                if (status != FyniteMachineStatus.Running)
+                {
+                    return false;
+                }
+            }
+
+            activeCount = count;
+            return true;
+        }
+
+        private bool EvaluateTransitions(out int from, out int to)
+        {
+            if (Evaluate(definition.Global, 0, definition.Global.Length, out from, out to))
+            {
+                return true;
+            }
+
+            for (var i = activeCount - 1; i >= 0; i--)
+            {
+                var state = activePath[i];
+                var start = definition.LocalStart[state];
+
+                if (Evaluate(definition.Local, start, start + definition.LocalCount[state], out from, out to))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool Evaluate(
+            FyniteTransitionRecord<TContext>[] records,
+            int start,
+            int end,
+            out int from,
+            out int to)
+        {
+            for (var i = start; i < end; i++)
+            {
+                if (!records[i].Predicate.Evaluate(context))
+                {
+                    continue;
+                }
+
+                from = records[i].From;
+                to = records[i].To;
+                return true;
+            }
+
+            from = FyniteTransitions<TContext>.AnyState;
+            to = FyniteTransitions<TContext>.AnyState;
+            return false;
+        }
+
+        private void ExitActivePath()
+        {
+            var states = definition.States;
+            while (activeCount > 0)
+            {
+                activeCount--;
+                states[activePath[activeCount]].InvokeExit();
+            }
         }
 
         private void Fault(Exception exception)
@@ -245,7 +381,7 @@ namespace Fynite
 
             try
             {
-                definition.States[current].InvokeExit();
+                ExitActivePath();
             }
             catch (Exception exception)
             {
@@ -269,6 +405,9 @@ namespace Fynite
                 }
             }
 
+            activeCount = 0;
+            activePath = null;
+            pathBuffer = null;
             definition = null;
             context = null;
             time = null;

@@ -15,6 +15,9 @@ machine = Machine
 É isso. Não existe `machine.Update()`, `machine.Tick(deltaTime)` nem `machine.Start()` no seu
 código: `Build()` entra no State inicial e registra a máquina no PlayerLoop.
 
+A máquina é plana por padrão. Quando precisar de superstates, acrescente `Child<TParent, TChild>()`
+à mesma composição — veja [Hierarquia](#6-hierarquia-opcional).
+
 ## 📥 Instalação
 
 Este pacote pode ser instalado através do Unity Package Manager usando a URL do Git.
@@ -24,14 +27,15 @@ Este pacote pode ser instalado através do Unity Package Manager usando a URL do
 último release e ainda assim conter código diferente. Dois projetos instalados em dias
 diferentes receberiam revisões distintas sob o mesmo `version`, e o Package Manager não avisa.
 
-A última versão publicada é **`v0.7.0`**.
+Escolha uma tag publicada na página [Releases](https://github.com/Natteens/fynite/releases) e
+acrescente `#<tag>` à URL.
 
 ### Via Package Manager (Recomendado)
 
 1. Abra o Package Manager (Window > Package Manager)
 2. Clique no botão **+** no canto superior esquerdo
 3. Selecione **"Add package from git URL..."**
-4. Digite a URL: `https://github.com/Natteens/fynite.git#v0.7.0`
+4. Digite a URL: `https://github.com/Natteens/fynite.git#<published-tag>`
 5. Clique em **Add**
 
 ### Via manifest.json
@@ -41,13 +45,12 @@ Adicione a seguinte linha ao arquivo `Packages/manifest.json` do seu projeto:
 ```json
 {
   "dependencies": {
-    "com.natteens.fynite": "https://github.com/Natteens/fynite.git#v0.7.0"
+    "com.natteens.fynite": "https://github.com/Natteens/fynite.git#<published-tag>"
   }
 }
 ```
 
-Troque `v0.7.0` pela tag desejada ao atualizar. As tags publicadas estão em
-[Releases](https://github.com/Natteens/fynite/releases).
+Troque a tag pela desejada ao atualizar.
 
 ## 🚀 Como usar
 
@@ -56,7 +59,7 @@ Cada peça tem uma responsabilidade só.
 | Peça | Responsabilidade |
 | --- | --- |
 | **Context** | Os dados e serviços da entidade. Uma instância por máquina. |
-| **State** | O comportamento enquanto aquele modo está ativo. |
+| **State** | O comportamento enquanto aquele modo está ativo. Pode agrupar outros States. |
 | **Predicate** | Uma condição, sem efeitos colaterais. |
 | **Transitions** | Quais States levam a quais, fora dos States. |
 
@@ -192,30 +195,86 @@ bool IsIn<TState>()
 void Dispose()
 ```
 
+### 6. Hierarquia (opcional)
+
+Tudo acima é uma FSM plana e continua funcionando sem mudar nada. Quando um State precisa agrupar
+outros, declare os filhos no mesmo lugar em que a máquina é montada:
+
+```csharp
+machine = Machine
+    .Attach(this, context)
+    .Start<GroundedState>()
+    .Child<GroundedState, LocomotionState>()
+    .Child<GroundedState, AttackState>()
+    .Use<PlayerTransitions>()
+    .Build();
+```
+
+Em linguagem simples:
+
+- um State sem filhos funciona como um State de FSM normal;
+- um State com filhos vira superstate: enquanto ele estiver ativo, um dos seus filhos também está;
+- **o primeiro filho declarado é o inicial** — aqui, `LocomotionState`;
+- `InitialChild<TParent, TChild>()` só é necessário para sobrescrever essa convenção;
+- `Start<T>()` continua sendo o State inicial de topo e não pode ser um filho;
+- não existe Root: States sem pai são States de topo.
+
+O que muda em tempo de execução:
+
+- `CurrentStateType` mostra o **leaf**, o State ativo mais profundo;
+- `IsIn<T>()` responde `true` para qualquer State ativo, inclusive os pais;
+- as transições do leaf são verificadas antes das do pai, que são verificadas antes das do avô;
+- `Enter` acontece do pai para o filho;
+- `Exit` acontece do filho para o pai;
+- `Update` e `FixedUpdate` acontecem do pai para o filho.
+
+Isso permite comportamento específico no filho, regras compartilhadas no superstate e regras
+universais em `Any()`, sem repetir transição nenhuma.
+
+```csharp
+public sealed class PlayerTransitions : IFyniteTransitions<PlayerContext>
+{
+    public void Configure(FyniteTransitions<PlayerContext> transitions)
+    {
+        transitions.From<LocomotionState>().To<AttackState>().When<PressedAttack>();
+        transitions.From<AttackState>().To<GroundedState>().When<AttackFinished>();
+        transitions.From<GroundedState>().To<AirborneState>().When<LeftTheGround>();
+    }
+}
+```
+
+`AttackState → GroundedState` volta para o filho inicial de `Grounded` sem sair de `Grounded`; já
+`GroundedState → AirborneState` vale estando em `Locomotion` ou em `Attack`, porque é uma transição
+do pai.
+
 ## ⏱ Lifecycle
+
+Numa máquina plana o caminho ativo tem um State só, e tudo abaixo se reduz ao comportamento de
+sempre.
 
 **Build**
 
 ```text
-cria os States → associa o Context → entra no State inicial → registra no PlayerLoop
+cria os States → associa o Context → entra no State inicial de topo
+→ entra nos filhos iniciais → registra no PlayerLoop
 ```
 
 **Update**
 
 ```text
 avalia as transições globais
-→ avalia as transições do State ativo
+→ avalia as transições do leaf, depois as do pai, subindo até o topo
 → executa no máximo uma transição
-→ executa o Update do State que ficou ativo
+→ executa o Update dos States ativos, do topo para o leaf
 ```
 
-Quando ocorre transição, a ordem é `Exit` do atual, `Enter` do destino e `Update` do destino, tudo
-no mesmo ciclo.
+Quando ocorre transição, sai-se do leaf para cima só até o ancestral comum, entra-se de lá para
+baixo até o novo leaf, e o `Update` do novo caminho roda no mesmo ciclo.
 
 **FixedUpdate**
 
 ```text
-FixedUpdate do State ativo
+FixedUpdate dos States ativos, do topo para o leaf
 ```
 
 Transições não são avaliadas no FixedUpdate.
@@ -223,26 +282,33 @@ Transições não são avaliadas no FixedUpdate.
 **Dispose**
 
 ```text
-Exit do State ativo → remove do loop → marca como descartada
+Exit do leaf → Exit dos ancestrais até o topo → remove do loop → marca como descartada
 ```
 
-`Dispose()` é idempotente e roda `Exit` exatamente uma vez. Ele acontece sozinho quando o owner é
-destruído; chamá-lo explicitamente só é necessário para encerrar a máquina antes disso.
+`Dispose()` é idempotente e roda `Exit` exatamente uma vez por State ativo. Ele acontece sozinho
+quando o owner é destruído; chamá-lo explicitamente só é necessário para encerrar a máquina antes
+disso.
 
 ## 🔁 Resolução de transições
 
 Não existe prioridade numérica. A ordem é fixa:
 
 1. transições globais (`Any()`) são avaliadas primeiro;
-2. depois as transições do State ativo;
-3. dentro do mesmo grupo vale a ordem de declaração, na ordem dos `Use<T>()`;
-4. a primeira condição verdadeira vence;
-5. no máximo uma transição por Update.
+2. depois as transições do leaf ativo;
+3. depois as do pai, e assim por diante até o State de topo;
+4. dentro do mesmo grupo vale a ordem de declaração, na ordem dos `Use<T>()`;
+5. a primeira condição verdadeira vence;
+6. no máximo uma transição por Update.
 
 A avaliação faz short-circuit: assim que um predicado retorna `true`, a transição é escolhida e
 **nenhum predicado seguinte do ciclo é avaliado** — nem no mesmo grupo, nem no grupo local quando uma
 global vence. Isso vale igualmente no Editor, em Development Build e em Release; não existe opção
 capaz de alterar essa semântica.
+
+Quando o destino tem filhos, a máquina desce automaticamente até o filho inicial. Quando o destino
+já é um ancestral ativo, o ancestral continua ativo e a ramificação recomeça pelo filho inicial. E
+uma transição explícita de um State para ele mesmo reinicia esse State — se ele for composto,
+reinicia a ramificação inteira.
 
 ## 🎛 PlayerLoop
 
@@ -256,32 +322,33 @@ zerados em `SubsystemRegistration` e limpos ao sair do Play Mode.
 
 A máquina para quando é descartada ou quando o owner é destruído. Se o owner for um `Behaviour`
 desabilitado ou estiver num GameObject inativo, `Update` e `FixedUpdate` pausam sem executar `Exit`,
-e ao reativar a máquina continua no mesmo State.
+e ao reativar a máquina continua no mesmo caminho ativo.
 
 ## ⚠️ Falhas
 
-Se `Enter`, `Update`, `FixedUpdate`, `Exit` ou um predicado lançar exceção, a máquina não fica
-parcialmente transitada: ela é marcada como faulted, sai do loop e para de executar callbacks. A
+Se `Enter`, `Update`, `FixedUpdate`, `Exit` ou um predicado lançar exceção — em qualquer nível do
+caminho ativo, pai ou filho — a máquina não fica parcialmente transitada: ela é marcada como
+faulted, sai do loop e para de executar callbacks, sem repetir a exceção a cada frame. A
 exceção não é escondida — durante o `Build()` ela é propagada, e durante um ciclo do PlayerLoop ela
 é reportada no console. Uma máquina que falha não afeta as outras.
 
 ## ⚡ Alocações
 
 Alocar durante `Attach`, `Build` e na criação de States, módulos e predicados é normal. No caminho
-por frame — Update, avaliação de predicados, FixedUpdate e troca de State — não há alocação
-intencional, nem LINQ, nem reflection.
+por frame — Update, avaliação de predicados, FixedUpdate, troca de State, cálculo do ancestral comum,
+descida até o filho inicial e `IsIn<T>()` — não há alocação intencional, nem LINQ, nem reflection. O
+caminho ativo vive em buffers criados uma única vez, no `Build()`.
 
 ## 📦 Sample
 
-**Code First** — `Idle → Walk` e `Walk → Idle`, com Context, States, predicados, módulo de
-transições e um controller sem `Update`, sem `FixedUpdate` e sem `OnDestroy`. Instale pelo Package
-Manager, aba *Samples*.
+**Code First** — `Grounded > Idle | Walk` mais um `Airborne` de topo, com Context, States,
+predicados, dois módulos de transições e um controller sem `Update`, sem `FixedUpdate` e sem
+`OnDestroy`. Instale pelo Package Manager, aba *Samples*.
 
 ## 🧭 Ainda não implementado
 
-Esta versão é uma máquina plana. Hierarquia, superstates, initial child, active path, activities,
-sequenciamento assíncrono, transições por evento, source generator e debugger visual ficam para
-fases seguintes.
+Activities, sequenciamento assíncrono, transições por evento, transições internal/local
+configuráveis, source generator e debugger visual ficam para fases seguintes.
 
 ## 📝 Changelog
 

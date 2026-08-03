@@ -69,5 +69,15 @@ namespace FyniteTests
                 .Start<IdleProbe>()
                 .Use<LocomotionModule>()
                 .Build());
+
+        /// <summary>Grounded &gt; Locomotion (initial), Attack — plus Airborne &gt; Falling.</summary>
+        protected FyniteMachine<ProbeContext> BuildBranches()
+            => Track(Attach()
+                .Start<GroundedProbe>()
+                .Child<GroundedProbe, LocomotionProbe>()
+                .Child<GroundedProbe, AttackProbe>()
+                .Child<AirborneProbe, FallingProbe>()
+                .Use<PlayerBranchModule>()
+                .Build());
     }
 }

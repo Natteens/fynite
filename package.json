@@ -20,7 +20,7 @@
   "samples": [
     {
       "displayName": "Code First",
-      "description": "Idle/Walk montado em código: Context, States, predicados e um módulo de transições, sem Update manual.",
+      "description": "Grounded com Idle/Walk como filhos e um Airborne de topo, montado em código: Context, States, predicados e módulos de transições, sem Update manual.",
       "path": "Samples~/CodeFirst"
     }
   ]

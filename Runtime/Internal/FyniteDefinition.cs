@@ -6,6 +6,7 @@ namespace Fynite
     {
         internal readonly FyniteState<TContext>[] States;
         internal readonly Type[] StateTypes;
+        internal readonly FyniteHierarchy Hierarchy;
         internal readonly FyniteTransitionRecord<TContext>[] Global;
         internal readonly FyniteTransitionRecord<TContext>[] Local;
         internal readonly int[] LocalStart;
@@ -14,6 +15,7 @@ namespace Fynite
         internal FyniteDefinition(
             FyniteState<TContext>[] states,
             Type[] stateTypes,
+            FyniteHierarchy hierarchy,
             FyniteTransitionRecord<TContext>[] global,
             FyniteTransitionRecord<TContext>[] local,
             int[] localStart,
@@ -21,6 +23,7 @@ namespace Fynite
         {
             States = states;
             StateTypes = stateTypes;
+            Hierarchy = hierarchy;
             Global = global;
             Local = local;
             LocalStart = localStart;
