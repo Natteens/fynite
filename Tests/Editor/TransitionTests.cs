@@ -1,265 +1,241 @@
+using Fynite;
 using NUnit.Framework;
 
-namespace Fynite.Tests
+namespace FyniteTests
 {
-    [TestFixture]
-    internal sealed class TransitionTests
+    public sealed class TransitionTests : MachineFixture
     {
         [Test]
-        public void CrossBranchTransitionPreservesTheCommonAncestors()
+        public void FalsePredicate_KeepsState()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Grounded)
-                .On(sample.Jump)
-                .Do(() => new TraceAction("effect"))
-                .TransitionTo(sample.Rising);
-            sample.Builder.State(sample.Idle).On(sample.Move).TransitionTo(sample.Moving);
+            var machine = BuildLocomotion();
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                machine.Raise(sample.Move);
-                context.Clear();
+            machine.Tick(0.1f);
 
-                machine.Raise(sample.Jump);
-
-                Assert.AreEqual(
-                    "Exit:Moving,Exit:Grounded,effect,Enter:Airborne,Enter:Rising",
-                    context.Trace);
-                Assert.AreEqual(sample.Rising, machine.ActiveLeaf);
-                Assert.IsTrue(machine.IsActive(sample.Root));
-                Assert.IsTrue(machine.IsActive(sample.Alive));
-                Assert.IsFalse(machine.IsActive(sample.Grounded));
-            }
+            Assert.That(machine.IsIn<IdleProbe>(), Is.True);
         }
 
         [Test]
-        public void SiblingTransitionOnlySwapsTheLeaf()
+        public void TruePredicate_ChangesState()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Idle)
-                .On(sample.Move)
-                .Do(() => new TraceAction("effect"))
-                .TransitionTo(sample.Moving);
+            var machine = BuildLocomotion();
+            Context.ToWalk = true;
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                context.Clear();
+            machine.Tick(0.1f);
 
-                machine.Raise(sample.Move);
-
-                Assert.AreEqual("Exit:Idle,effect,Enter:Moving", context.Trace);
-                Assert.IsTrue(machine.IsActive(sample.Grounded));
-                Assert.IsTrue(machine.IsActive(sample.Alive));
-                Assert.IsTrue(machine.IsActive(sample.Root));
-                Assert.AreEqual(sample.Moving, machine.ActiveLeaf);
-            }
+            Assert.That(machine.IsIn<WalkProbe>(), Is.True);
         }
 
         [Test]
-        public void CompositeTargetFollowsItsInitialChain()
+        public void FirstDeclaredTrueTransitionWins()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Grounded).On(sample.Jump).TransitionTo(sample.Airborne);
+            var machine = Track(Attach()
+                .Start<IdleProbe>()
+                .Use<AmbiguousModule>()
+                .Build());
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                context.Clear();
+            Context.ToWalk = true;
+            Context.ToRun = true;
+            machine.Tick(0.1f);
 
-                machine.Raise(sample.Jump);
-
-                Assert.AreEqual(
-                    "Exit:Idle,Exit:Grounded,Enter:Airborne,Enter:Rising",
-                    context.Trace);
-                Assert.AreEqual(sample.Rising, machine.ActiveLeaf);
-            }
+            Assert.That(machine.IsIn<WalkProbe>(), Is.True);
         }
 
         [Test]
-        public void TransitionToAnActiveAncestorReentersItsInitialChainOnly()
+        public void DeclarationOrderAcrossModulesIsDeterministic()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Idle).On(sample.Move).TransitionTo(sample.Moving);
-            sample.Builder.State(sample.Moving)
-                .On(sample.Stop)
-                .Do(() => new TraceAction("effect"))
-                .TransitionTo(sample.Grounded);
+            var machine = Track(Attach()
+                .Start<IdleProbe>()
+                .Use<IdleToRunModule>()
+                .Use<AmbiguousModule>()
+                .Build());
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                machine.Raise(sample.Move);
-                context.Clear();
+            Context.ToWalk = true;
+            Context.ToRun = true;
+            machine.Tick(0.1f);
 
-                machine.Raise(sample.Stop);
-
-                // Grounded is the least common ancestor, so it stays active and is not re-entered.
-                Assert.AreEqual("Exit:Moving,effect,Enter:Idle", context.Trace);
-                Assert.AreEqual(sample.Idle, machine.ActiveLeaf);
-            }
+            Assert.That(machine.IsIn<RunProbe>(), Is.True);
         }
 
         [Test]
-        public void TransitionDeclaredOnAnAncestorToItsDescendantKeepsTheAncestorActive()
+        public void OnlyOneTransitionRunsPerUpdate()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Grounded)
-                .On(sample.Move)
-                .Do(() => new TraceAction("effect"))
-                .TransitionTo(sample.Moving);
+            var machine = Track(Attach()
+                .Start<IdleProbe>()
+                .Use<ChainModule>()
+                .Build());
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                context.Clear();
+            Context.ToWalk = true;
+            Context.ToRun = true;
+            Context.Log.Clear();
 
-                machine.Raise(sample.Move);
+            machine.Tick(0.1f);
 
-                Assert.AreEqual("Exit:Idle,effect,Enter:Moving", context.Trace);
-                Assert.IsTrue(machine.IsActive(sample.Grounded));
-            }
+            Assert.That(
+                Context.Trace,
+                Is.EqualTo("IdleProbe.Exit,WalkProbe.Enter,WalkProbe.Update"));
         }
 
         [Test]
-        public void SelfTransitionOnALeafRestartsIt()
+        public void GlobalTransitionIsEvaluatedBeforeLocal()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Idle)
-                .On(sample.Move)
-                .Do(() => new TraceAction("effect"))
-                .TransitionTo(sample.Idle);
+            var machine = Track(Attach()
+                .Start<IdleProbe>()
+                .Use<LocomotionModule>()
+                .Use<DeathModule>()
+                .Build());
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                context.Clear();
+            Context.ToWalk = true;
+            Context.ToDead = true;
+            machine.Tick(0.1f);
 
-                machine.Raise(sample.Move);
-
-                Assert.AreEqual("Exit:Idle,effect,Enter:Idle", context.Trace);
-                Assert.AreEqual(sample.Idle, machine.ActiveLeaf);
-            }
+            Assert.That(machine.IsIn<DeadProbe>(), Is.True);
         }
 
         [Test]
-        public void SelfTransitionOnACompositeRestartsItAndItsInitialChain()
+        public void GlobalTransitionAppliesFromAnyState()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Idle).On(sample.Move).TransitionTo(sample.Moving);
-            sample.Builder.State(sample.Grounded)
-                .On(sample.Stop)
-                .Do(() => new TraceAction("effect"))
-                .TransitionTo(sample.Grounded);
+            var machine = Track(Attach()
+                .Start<IdleProbe>()
+                .Use<LocomotionModule>()
+                .Use<DeathModule>()
+                .Build());
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                machine.Raise(sample.Move);
-                context.Clear();
+            Context.ToWalk = true;
+            machine.Tick(0.1f);
+            Context.ToWalk = false;
+            Context.ToDead = true;
+            machine.Tick(0.1f);
 
-                machine.Raise(sample.Stop);
-
-                Assert.AreEqual(
-                    "Exit:Moving,Exit:Grounded,effect,Enter:Grounded,Enter:Idle",
-                    context.Trace);
-                Assert.AreEqual(sample.Idle, machine.ActiveLeaf);
-                Assert.IsTrue(machine.IsActive(sample.Alive));
-            }
+            Assert.That(machine.IsIn<DeadProbe>(), Is.True);
         }
 
         [Test]
-        public void SelfTransitionOnTheRootRestartsTheWholeMachine()
+        public void LambdaAndPredicateBehaveTheSame()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Root).On(sample.Stop).TransitionTo(sample.Root);
+            var byInterface = Track(Attach()
+                .Start<IdleProbe>()
+                .Use<LocomotionModule>()
+                .Build());
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                context.Clear();
+            var lambdaContext = new ProbeContext();
+            var byLambda = Track(Attach(NewOwner(), lambdaContext)
+                .Start<IdleProbe>()
+                .Use<LambdaModule>()
+                .Build());
 
-                machine.Raise(sample.Stop);
+            Context.ToWalk = true;
+            lambdaContext.ToWalk = true;
+            Context.Log.Clear();
+            lambdaContext.Log.Clear();
 
-                Assert.AreEqual(
-                    "Exit:Idle,Exit:Grounded,Exit:Alive,Exit:Root,Enter:Root,Enter:Alive,Enter:Grounded,Enter:Idle",
-                    context.Trace);
-                Assert.AreEqual(sample.Idle, machine.ActiveLeaf);
-            }
+            byInterface.Tick(0.1f);
+            byLambda.Tick(0.1f);
+
+            Assert.That(lambdaContext.Trace, Is.EqualTo(Context.Trace));
+            Assert.That(byLambda.CurrentStateType, Is.EqualTo(byInterface.CurrentStateType));
         }
 
         [Test]
-        public void EffectsRunBetweenExitsAndEnters()
+        public void MachinesDoNotShareStateInstances()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Grounded)
-                .On(sample.Jump)
-                .Do(() => new TraceAction("effect-one"))
-                .Do(() => new TraceAction("effect-two"))
-                .TransitionTo(sample.Rising);
+            var first = BuildLocomotion();
+            var secondContext = new ProbeContext();
+            var second = Track(Attach(NewOwner(), secondContext)
+                .Start<IdleProbe>()
+                .Use<LocomotionModule>()
+                .Build());
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                context.Clear();
+            Assert.That(ProbeState.Instances, Is.EqualTo(4));
 
-                machine.Raise(sample.Jump);
+            Context.ToWalk = true;
+            first.Tick(0.1f);
 
-                Assert.AreEqual(
-                    "Exit:Idle,Exit:Grounded,effect-one,effect-two,Enter:Airborne,Enter:Rising",
-                    context.Trace);
-            }
+            Assert.That(first.IsIn<WalkProbe>(), Is.True);
+            Assert.That(second.IsIn<IdleProbe>(), Is.True);
         }
 
         [Test]
-        public void TransitionsChangeWhichTickBlocksRun()
+        public void MachinesDoNotShareContext()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Grounded).On(sample.Jump).TransitionTo(sample.Rising);
+            var first = BuildLocomotion();
+            var secondContext = new ProbeContext();
+            var second = Track(Attach(NewOwner(), secondContext)
+                .Start<IdleProbe>()
+                .Use<LocomotionModule>()
+                .Build());
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                machine.Raise(sample.Jump);
-                context.Clear();
+            Context.Log.Clear();
+            secondContext.Log.Clear();
 
-                machine.Tick(0.1f);
+            first.Tick(0.1f);
 
-                Assert.AreEqual("Tick:Root,Tick:Alive,Tick:Airborne,Tick:Rising", context.Trace);
-            }
+            Assert.That(Context.Trace, Is.EqualTo("IdleProbe.Update"));
+            Assert.That(secondContext.Log, Is.Empty);
+            Assert.That(second.IsRunning, Is.True);
         }
 
         [Test]
-        public void DeepTargetEntersEveryIntermediateState()
+        public void SelfTransitionRunsExitAndEnter()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Root).On(sample.Fall).TransitionTo(sample.Falling);
+            var machine = Track(Attach()
+                .Start<IdleProbe>()
+                .Use<SelfModule>()
+                .Build());
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
+            Context.Log.Clear();
+            Context.ToIdle = true;
+            machine.Tick(0.1f);
+
+            Assert.That(
+                Context.Trace,
+                Is.EqualTo("IdleProbe.Exit,IdleProbe.Enter,IdleProbe.Update"));
+        }
+
+        private sealed class AmbiguousModule : IFyniteTransitions<ProbeContext>
+        {
+            public void Configure(FyniteTransitions<ProbeContext> transitions)
             {
-                machine.Start();
-                context.Clear();
-
-                machine.Raise(sample.Fall);
-
-                // Root is the least common ancestor, so it is preserved while everything below is rebuilt.
-                Assert.AreEqual(
-                    "Exit:Idle,Exit:Grounded,Exit:Alive,Enter:Alive,Enter:Airborne,Enter:Falling",
-                    context.Trace);
-                Assert.AreEqual(sample.Falling, machine.ActiveLeaf);
+                transitions.From<IdleProbe>().To<WalkProbe>().When<ToWalk>();
+                transitions.From<IdleProbe>().To<RunProbe>().When<ToRun>();
             }
+        }
+
+        private sealed class IdleToRunModule : IFyniteTransitions<ProbeContext>
+        {
+            public void Configure(FyniteTransitions<ProbeContext> transitions)
+                => transitions.From<IdleProbe>().To<RunProbe>().When<ToRun>();
+        }
+
+        private sealed class ChainModule : IFyniteTransitions<ProbeContext>
+        {
+            public void Configure(FyniteTransitions<ProbeContext> transitions)
+            {
+                transitions.From<IdleProbe>().To<WalkProbe>().When<ToWalk>();
+                transitions.From<WalkProbe>().To<RunProbe>().When<ToRun>();
+            }
+        }
+
+        private sealed class LambdaModule : IFyniteTransitions<ProbeContext>
+        {
+            public void Configure(FyniteTransitions<ProbeContext> transitions)
+            {
+                transitions
+                    .From<IdleProbe>()
+                    .To<WalkProbe>()
+                    .When(static context => context.ToWalk);
+
+                transitions
+                    .From<WalkProbe>()
+                    .To<IdleProbe>()
+                    .When(static context => context.ToIdle);
+            }
+        }
+
+        private sealed class SelfModule : IFyniteTransitions<ProbeContext>
+        {
+            public void Configure(FyniteTransitions<ProbeContext> transitions)
+                => transitions.From<IdleProbe>().To<IdleProbe>().When<ToIdle>();
         }
     }
 }

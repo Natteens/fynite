@@ -1,7 +1,9 @@
 {
-  "name": "Fynite",
-  "rootNamespace": "",
-  "references": [],
+  "name": "Fynite.Samples.CodeFirst",
+  "rootNamespace": "FyniteSamples.CodeFirst",
+  "references": [
+    "Fynite"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

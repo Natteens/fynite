@@ -1,9 +1,8 @@
 {
   "name": "Fynite.Tests.Runtime",
-  "rootNamespace": "Fynite.Tests",
+  "rootNamespace": "FyniteTests",
   "references": [
     "Fynite",
-    "Fynite.Core",
     "Fynite.Tests.Shared",
     "UnityEngine.TestRunner"
   ],

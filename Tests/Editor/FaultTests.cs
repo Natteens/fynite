@@ -1,176 +1,162 @@
 using System;
+using System.Text.RegularExpressions;
+using Fynite;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 
-namespace Fynite.Tests
+namespace FyniteTests
 {
-    [TestFixture]
-    internal sealed class FaultTests
+    public sealed class FaultTests : MachineFixture
     {
+        private static readonly Regex Boom = new Regex("fynite-test-boom");
+        private static readonly Regex PredicateBoom = new Regex("fynite-test-predicate");
+
         [Test]
-        public void AnExceptionInAnEnterBlockPropagatesAndFaultsTheMachine()
+        public void ExceptionInEnterDuringBuildIsNotSwallowed()
         {
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Grounded).OnEnter(() => new ThrowingAction("enter failed"));
+            Context.OnEnter = Throw;
 
-            var diagnostics = new RecordingDiagnostics();
-            using (var machine = sample.Build().CreateMachine(new TraceContext(), diagnostics))
-            {
-                var error = Assert.Throws<InvalidOperationException>(() => machine.Start());
+            Assert.Throws<InvalidOperationException>(
+                () => Attach().Start<IdleProbe>().Use<LocomotionModule>().Build());
 
-                Assert.AreEqual("enter failed", error.Message);
-                Assert.AreEqual(FyniteLifecycle.Faulted, machine.Lifecycle);
-                Assert.AreEqual(1, diagnostics.Faults.Count);
-                Assert.AreSame(error, diagnostics.Faults[0]);
-            }
+            Assert.That(FyniteLoop.Count, Is.EqualTo(0));
         }
 
         [Test]
-        public void AnExceptionInATickBlockPropagatesAndFaultsTheMachine()
+        public void ExceptionInEnterDuringTransitionFaultsTheMachine()
         {
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Idle).OnTick(() => new ThrowingAction("tick failed"));
+            var machine = BuildLocomotion();
+            Context.ToWalk = true;
+            Context.OnEnter = Throw;
 
-            var diagnostics = new RecordingDiagnostics();
-            using (var machine = sample.Build().CreateMachine(new TraceContext(), diagnostics))
-            {
-                machine.Start();
+            LogAssert.Expect(LogType.Exception, Boom);
+            machine.Tick(0.1f);
 
-                var error = Assert.Throws<InvalidOperationException>(() => machine.Tick(0.1f));
-
-                Assert.AreEqual("tick failed", error.Message);
-                Assert.AreEqual(FyniteLifecycle.Faulted, machine.Lifecycle);
-                Assert.IsTrue(diagnostics.Contains("faulted:InvalidOperationException"));
-            }
+            Assert.That(machine.IsRunning, Is.False);
+            Assert.That(FyniteLoop.Count, Is.EqualTo(0));
         }
 
         [Test]
-        public void AnExceptionInAFixedTickBlockFaultsTheMachine()
+        public void ExceptionInUpdateDoesNotRepeat()
         {
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Idle).OnFixedTick(() => new ThrowingAction("fixed failed"));
+            var machine = BuildLocomotion();
+            Context.OnUpdate = Throw;
 
-            using (var machine = sample.Build().CreateMachine(new TraceContext()))
-            {
-                machine.Start();
+            LogAssert.Expect(LogType.Exception, Boom);
+            machine.Tick(0.1f);
 
-                Assert.Throws<InvalidOperationException>(() => machine.FixedTick(0.02f));
-                Assert.AreEqual(FyniteLifecycle.Faulted, machine.Lifecycle);
-            }
+            Context.Log.Clear();
+            machine.Tick(0.1f);
+            machine.Tick(0.1f);
+
+            Assert.That(Context.Log, Is.Empty);
+            Assert.That(machine.IsRunning, Is.False);
+            Assert.That(FyniteLoop.Count, Is.EqualTo(0));
         }
 
         [Test]
-        public void AnExceptionInAGuardPropagatesAndFaultsTheMachine()
+        public void ExceptionInFixedUpdateDoesNotRepeat()
         {
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Idle)
-                .On(sample.Move)
-                .When(() => new ThrowingGuard("guard failed"))
-                .TransitionTo(sample.Moving);
+            var machine = BuildLocomotion();
+            Context.OnFixedUpdate = Throw;
 
-            var diagnostics = new RecordingDiagnostics();
-            using (var machine = sample.Build().CreateMachine(new TraceContext(), diagnostics))
-            {
-                machine.Start();
+            LogAssert.Expect(LogType.Exception, Boom);
+            machine.TickFixed(0.02f);
 
-                var error = Assert.Throws<InvalidOperationException>(() => machine.Raise(sample.Move));
+            Context.Log.Clear();
+            machine.TickFixed(0.02f);
+            machine.TickFixed(0.02f);
 
-                Assert.AreEqual("guard failed", error.Message);
-                Assert.AreEqual(FyniteLifecycle.Faulted, machine.Lifecycle);
-                Assert.AreEqual(1, diagnostics.Faults.Count);
-            }
+            Assert.That(Context.Log, Is.Empty);
+            Assert.That(machine.IsRunning, Is.False);
         }
 
         [Test]
-        public void AnExceptionInAnEffectPropagatesAndFaultsTheMachine()
+        public void ExceptionInExitLeavesNoActiveRegistration()
         {
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Idle)
-                .On(sample.Move)
-                .Do(() => new ThrowingAction("effect failed"))
-                .TransitionTo(sample.Moving);
+            var machine = BuildLocomotion();
+            Context.ToWalk = true;
+            Context.OnExit = Throw;
 
-            using (var machine = sample.Build().CreateMachine(new TraceContext()))
-            {
-                machine.Start();
+            LogAssert.Expect(LogType.Exception, Boom);
+            machine.Tick(0.1f);
 
-                var error = Assert.Throws<InvalidOperationException>(() => machine.Raise(sample.Move));
-
-                Assert.AreEqual("effect failed", error.Message);
-                Assert.AreEqual(FyniteLifecycle.Faulted, machine.Lifecycle);
-            }
+            Assert.That(machine.IsRunning, Is.False);
+            Assert.That(FyniteLoop.Count, Is.EqualTo(0));
         }
 
         [Test]
-        public void AnExceptionInAnExitBlockPropagatesAndFaultsTheMachine()
+        public void ExceptionInExitDuringDisposeStillUnregisters()
         {
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Idle).OnExit(() => new ThrowingAction("exit failed"));
+            var machine = BuildLocomotion();
+            Context.OnExit = Throw;
 
-            using (var machine = sample.Build().CreateMachine(new TraceContext()))
-            {
-                machine.Start();
+            Assert.Throws<InvalidOperationException>(() => machine.Dispose());
 
-                var error = Assert.Throws<InvalidOperationException>(() => machine.Stop());
-
-                Assert.AreEqual("exit failed", error.Message);
-                Assert.AreEqual(FyniteLifecycle.Faulted, machine.Lifecycle);
-            }
+            Assert.That(FyniteLoop.Count, Is.EqualTo(0));
+            Assert.That(machine.IsRunning, Is.False);
         }
 
         [Test]
-        public void PendingSignalsAreClearedWhenTheMachineFaults()
+        public void ExceptionInPredicateDoesNotCorruptTheCurrentState()
         {
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Idle)
-                .OnTick(() => new RaiseAction("queue-move", sample.Move))
-                .OnTick(() => new ThrowingAction("tick failed"))
-                .On(sample.Move).Do(() => new TraceAction("should-not-run"));
+            var machine = Track(Attach()
+                .Start<IdleProbe>()
+                .Use<ThrowingModule>()
+                .Build());
 
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
+            LogAssert.Expect(LogType.Exception, PredicateBoom);
+            machine.Tick(0.1f);
 
-                Assert.Throws<InvalidOperationException>(() => machine.Tick(0.1f));
-
-                Assert.AreEqual("queue-move", context.Trace);
-                Assert.AreEqual(FyniteLifecycle.Faulted, machine.Lifecycle);
-            }
+            Assert.That(machine.IsRunning, Is.False);
+            Assert.That(machine.CurrentStateType, Is.Null);
+            Assert.That(Context.CountOf("IdleProbe.Exit"), Is.EqualTo(0));
+            Assert.That(Context.CountOf("WalkProbe.Enter"), Is.EqualTo(0));
+            Assert.That(FyniteLoop.Count, Is.EqualTo(0));
         }
 
         [Test]
-        public void AFaultedMachineStillDisposesItsBlocks()
+        public void FaultedMachineIsSafeToDispose()
         {
-            var tally = new DisposalTally();
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Idle)
-                .OnEnter(() => new DisposableAction(tally, "enter"))
-                .OnTick(() => new ThrowingAction("tick failed"));
+            var machine = BuildLocomotion();
+            Context.OnUpdate = Throw;
 
-            var machine = sample.Build().CreateMachine(new TraceContext());
-            machine.Start();
-            Assert.Throws<InvalidOperationException>(() => machine.Tick(0.1f));
+            LogAssert.Expect(LogType.Exception, Boom);
+            machine.Tick(0.1f);
 
-            machine.Dispose();
-
-            Assert.AreEqual(1, tally.CountOf("enter"));
-            Assert.AreEqual(FyniteLifecycle.Disposed, machine.Lifecycle);
+            Context.Log.Clear();
+            Assert.DoesNotThrow(() => machine.Dispose());
+            Assert.That(Context.Log, Is.Empty);
         }
 
         [Test]
-        public void ABlockFactoryFailureDoesNotLeaveTheMachineHalfBuilt()
+        public void OneFaultedMachineDoesNotStopAnother()
         {
-            var tally = new DisposalTally();
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Idle).OnEnter(() => new DisposableAction(tally, "first"));
-            sample.Builder.State(sample.Moving).OnEnter(() => throw new InvalidOperationException("factory failed"));
+            var faulting = BuildLocomotion();
+            var healthyContext = new ProbeContext();
+            var healthy = Track(Attach(NewOwner(), healthyContext)
+                .Start<IdleProbe>()
+                .Use<LocomotionModule>()
+                .Build());
 
-            var definition = sample.Build();
+            Context.OnUpdate = Throw;
+            healthyContext.Log.Clear();
 
-            var error = Assert.Throws<InvalidOperationException>(() => definition.CreateMachine(new TraceContext()));
+            LogAssert.Expect(LogType.Exception, Boom);
+            FyniteLoop.Tick(0.1f, false);
 
-            Assert.AreEqual("factory failed", error.Message);
-            Assert.AreEqual(1, tally.CountOf("first"));
+            Assert.That(faulting.IsRunning, Is.False);
+            Assert.That(healthy.IsRunning, Is.True);
+            Assert.That(healthyContext.Trace, Is.EqualTo("IdleProbe.Update"));
+        }
+
+        private static void Throw() => throw new InvalidOperationException("fynite-test-boom");
+
+        private sealed class ThrowingModule : IFyniteTransitions<ProbeContext>
+        {
+            public void Configure(FyniteTransitions<ProbeContext> transitions)
+                => transitions.From<IdleProbe>().To<WalkProbe>().When<ThrowingPredicate>();
         }
     }
 }

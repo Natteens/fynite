@@ -1,9 +1,8 @@
 {
   "name": "Fynite.Tests.Shared",
-  "rootNamespace": "Fynite.Tests",
+  "rootNamespace": "FyniteTests",
   "references": [
-    "Fynite",
-    "Fynite.Core"
+    "Fynite"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

@@ -2,7 +2,7 @@
   "name": "com.natteens.fynite",
   "version": "0.7.0",
   "displayName": "Fynite",
-  "description": "Hierarchical State Machine pronta para integração rápida em projetos Unity.",
+  "description": "State machine code-first e type-safe, dirigida automaticamente pelo Unity PlayerLoop.",
   "keywords": [
     "Unity",
     "GameDev",
@@ -19,9 +19,9 @@
   "licensesUrl": "https://github.com/Natteens/fynite/blob/main/LICENSE.md",
   "samples": [
     {
-      "displayName": "Basic HFSM",
-      "description": "A real .fyn graph with a Root/Idle/Moving hierarchy, three signals, guards, effects and a reaction without a target.",
-      "path": "Samples~/BasicHfsm"
+      "displayName": "Code First",
+      "description": "Idle/Walk montado em código: Context, States, predicados e um módulo de transições, sem Update manual.",
+      "path": "Samples~/CodeFirst"
     }
   ]
 }

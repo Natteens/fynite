@@ -1,225 +1,122 @@
-using System;
+using Fynite;
 using NUnit.Framework;
 
-namespace Fynite.Tests
+namespace FyniteTests
 {
-    [TestFixture]
-    internal sealed class LifecycleTests
+    public sealed class LifecycleTests : MachineFixture
     {
         [Test]
-        public void ANewMachineIsCreatedAndIdle()
+        public void Build_EntersInitialState()
         {
-            var sample = new SampleHierarchy();
-            using (var machine = sample.Build().CreateMachine(new TraceContext()))
-            {
-                Assert.AreEqual(FyniteLifecycle.Created, machine.Lifecycle);
-                Assert.IsFalse(machine.IsRunning);
-                Assert.AreEqual(0, machine.ActiveDepth);
-                Assert.IsFalse(machine.ActiveLeaf.IsValid);
-            }
+            var machine = BuildLocomotion();
+
+            Assert.That(Context.Trace, Is.EqualTo("IdleProbe.Enter"));
+            Assert.That(machine.IsIn<IdleProbe>(), Is.True);
+            Assert.That(machine.CurrentStateType, Is.EqualTo(typeof(IdleProbe)));
+            Assert.That(machine.IsRunning, Is.True);
         }
 
         [Test]
-        public void StartMovesTheMachineToRunning()
+        public void Update_RunsActiveState()
         {
-            var sample = new SampleHierarchy();
-            using (var machine = sample.Build().CreateMachine(new TraceContext()))
-            {
-                machine.Start();
+            var machine = BuildLocomotion();
+            Context.Log.Clear();
 
-                Assert.AreEqual(FyniteLifecycle.Running, machine.Lifecycle);
-                Assert.IsTrue(machine.IsRunning);
-            }
+            machine.Tick(0.1f);
+
+            Assert.That(Context.Trace, Is.EqualTo("IdleProbe.Update"));
         }
 
         [Test]
-        public void StartingTwiceIsRejected()
+        public void FixedUpdate_RunsActiveState()
         {
-            var sample = new SampleHierarchy();
-            using (var machine = sample.Build().CreateMachine(new TraceContext()))
-            {
-                machine.Start();
+            var machine = BuildLocomotion();
+            Context.Log.Clear();
 
-                var error = Assert.Throws<InvalidOperationException>(() => machine.Start());
-                StringAssert.Contains("already running", error.Message);
-            }
+            machine.TickFixed(0.02f);
+
+            Assert.That(Context.Trace, Is.EqualTo("IdleProbe.FixedUpdate"));
         }
 
         [Test]
-        public void StopIsIdempotent()
+        public void FixedUpdate_DoesNotEvaluateTransitions()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                machine.Stop();
-                context.Clear();
+            var machine = BuildLocomotion();
+            Context.Log.Clear();
+            Context.ToWalk = true;
 
-                machine.Stop();
+            machine.TickFixed(0.02f);
 
-                Assert.AreEqual(string.Empty, context.Trace);
-                Assert.AreEqual(FyniteLifecycle.Stopped, machine.Lifecycle);
-            }
+            Assert.That(Context.Trace, Is.EqualTo("IdleProbe.FixedUpdate"));
+            Assert.That(machine.IsIn<IdleProbe>(), Is.True);
         }
 
         [Test]
-        public void StopOnANeverStartedMachineDoesNothing()
+        public void Transition_RunsExitThenEnterThenUpdateOfTarget()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Stop();
+            var machine = BuildLocomotion();
+            Context.Log.Clear();
+            Context.ToWalk = true;
 
-                Assert.AreEqual(string.Empty, context.Trace);
-                Assert.AreEqual(FyniteLifecycle.Created, machine.Lifecycle);
-            }
+            machine.Tick(0.1f);
+
+            Assert.That(
+                Context.Trace,
+                Is.EqualTo("IdleProbe.Exit,WalkProbe.Enter,WalkProbe.Update"));
+            Assert.That(machine.IsIn<WalkProbe>(), Is.True);
         }
 
         [Test]
-        public void AMachineCanBeRestartedAfterStop()
+        public void Dispose_RunsExitOnce()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                machine.Stop();
-                context.Clear();
+            var machine = BuildLocomotion();
+            Context.Log.Clear();
 
-                machine.Start();
-
-                Assert.AreEqual("Enter:Root,Enter:Alive,Enter:Grounded,Enter:Idle", context.Trace);
-                Assert.AreEqual(sample.Idle, machine.ActiveLeaf);
-                Assert.AreEqual(FyniteLifecycle.Running, machine.Lifecycle);
-            }
-        }
-
-        [Test]
-        public void RestartReturnsToTheInitialConfiguration()
-        {
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Idle).On(sample.Move).TransitionTo(sample.Moving);
-
-            using (var machine = sample.Build().CreateMachine(new TraceContext()))
-            {
-                machine.Start();
-                machine.Raise(sample.Move);
-                Assert.AreEqual(sample.Moving, machine.ActiveLeaf);
-
-                machine.Stop();
-                machine.Start();
-
-                Assert.AreEqual(sample.Idle, machine.ActiveLeaf);
-            }
-        }
-
-        [Test]
-        public void DisposeStopsARunningMachine()
-        {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            var context = new TraceContext();
-            var machine = sample.Build().CreateMachine(context);
-
-            machine.Start();
-            context.Clear();
             machine.Dispose();
 
-            Assert.AreEqual("Exit:Idle,Exit:Grounded,Exit:Alive,Exit:Root", context.Trace);
-            Assert.AreEqual(FyniteLifecycle.Disposed, machine.Lifecycle);
+            Assert.That(Context.Trace, Is.EqualTo("IdleProbe.Exit"));
+            Assert.That(machine.IsRunning, Is.False);
         }
 
         [Test]
-        public void DisposeIsIdempotent()
+        public void Dispose_IsIdempotent()
         {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            var context = new TraceContext();
-            var machine = sample.Build().CreateMachine(context);
+            var machine = BuildLocomotion();
+            Context.Log.Clear();
 
-            machine.Start();
             machine.Dispose();
-            context.Clear();
-
-            Assert.DoesNotThrow(() => machine.Dispose());
-            Assert.AreEqual(string.Empty, context.Trace);
-        }
-
-        [Test]
-        public void EveryOperationIsRejectedAfterDispose()
-        {
-            var sample = new SampleHierarchy();
-            var machine = sample.Build().CreateMachine(new TraceContext());
+            machine.Dispose();
             machine.Dispose();
 
-            Assert.Throws<ObjectDisposedException>(() => machine.Start());
-            Assert.Throws<ObjectDisposedException>(() => machine.Stop());
-            Assert.Throws<ObjectDisposedException>(() => machine.Tick(0.1f));
-            Assert.Throws<ObjectDisposedException>(() => machine.FixedTick(0.02f));
-            Assert.Throws<ObjectDisposedException>(() => machine.Raise(sample.Move));
+            Assert.That(Context.CountOf("IdleProbe.Exit"), Is.EqualTo(1));
         }
 
         [Test]
-        public void StartStopAndDisposeAreRejectedFromInsideABlock()
+        public void Dispose_StopsFurtherCallbacks()
         {
-            var sample = new SampleHierarchy();
-            var reentrant = new ReentrantAction();
-            sample.Builder.State(sample.Idle).OnTick(() => reentrant);
+            var machine = BuildLocomotion();
+            machine.Dispose();
+            Context.Log.Clear();
 
-            using (var machine = sample.Build().CreateMachine(new TraceContext()))
-            {
-                reentrant.Machine = machine;
-                machine.Start();
+            machine.Tick(0.1f);
+            machine.TickFixed(0.02f);
 
-                Assert.Throws<InvalidOperationException>(() => machine.Tick(0.1f));
-                Assert.AreEqual(FyniteLifecycle.Faulted, machine.Lifecycle);
-            }
+            Assert.That(Context.Log, Is.Empty);
+            Assert.That(machine.CurrentStateType, Is.Null);
+            Assert.That(machine.IsIn<IdleProbe>(), Is.False);
         }
 
         [Test]
-        public void RaiseIsRejectedAfterAFault()
+        public void Update_WithoutTransition_KeepsState()
         {
-            var sample = new SampleHierarchy();
-            sample.Builder.State(sample.Idle).OnTick(() => new ThrowingAction("boom"));
+            var machine = BuildLocomotion();
+            Context.Log.Clear();
 
-            using (var machine = sample.Build().CreateMachine(new TraceContext()))
-            {
-                machine.Start();
-                Assert.Throws<InvalidOperationException>(() => machine.Tick(0.1f));
+            machine.Tick(0.1f);
+            machine.Tick(0.1f);
 
-                Assert.AreEqual(FyniteLifecycle.Faulted, machine.Lifecycle);
-                Assert.Throws<InvalidOperationException>(() => machine.Raise(sample.Move));
-                Assert.Throws<InvalidOperationException>(() => machine.Start());
-                Assert.Throws<InvalidOperationException>(() => machine.Tick(0.1f));
-                Assert.Throws<InvalidOperationException>(() => machine.FixedTick(0.02f));
-            }
-        }
-
-        [Test]
-        public void StopOnAFaultedMachineDoesNotRunExitBlocksAgain()
-        {
-            var sample = new SampleHierarchy().TraceAllPhases();
-            sample.Builder.State(sample.Idle).OnTick(() => new ThrowingAction("boom"));
-
-            var context = new TraceContext();
-            using (var machine = sample.Build().CreateMachine(context))
-            {
-                machine.Start();
-                Assert.Throws<InvalidOperationException>(() => machine.Tick(0.1f));
-                context.Clear();
-
-                machine.Stop();
-
-                Assert.AreEqual(string.Empty, context.Trace);
-                Assert.AreEqual(FyniteLifecycle.Faulted, machine.Lifecycle);
-            }
-        }
-
-        private sealed class ReentrantAction : IFyniteAction<ITraceContext>
-        {
-            internal IFyniteMachine Machine { get; set; }
-
-            public void Execute(ITraceContext context, in FyniteExecution execution) => Machine.Stop();
+            Assert.That(Context.Trace, Is.EqualTo("IdleProbe.Update,IdleProbe.Update"));
+            Assert.That(machine.IsIn<IdleProbe>(), Is.True);
         }
     }
 }
