@@ -1,57 +1,32 @@
 # Code First
 
-Uma máquina com um superstate e dois filhos. `Grounded` é o State de topo; dentro dele, `Idle` passa
-para `Walk` quando existe input de movimento e `Walk` volta para `Idle` quando o input para. Quando o
-personagem deixa de estar no chão, a ramificação inteira sai e `Airborne` assume. Nada é configurado
-no Inspector e nada chama `Update` na mão.
+A small locomotion machine assembled entirely in code. `Grounded` holds `Idle` and `Walk`: idle
+switches to walk once there is movement input, and back again when the input stops. `Airborne` sits
+next to `Grounded` and takes over whenever the character leaves the ground.
 
 ```text
 GroundedState
-├── IdleState   (filho inicial)
+├── IdleState   (initial child)
 └── WalkState
 
 AirborneState
 ```
 
-## Montando a cena
+## Running it
 
-1. Adicione `ExampleInput` e `ExampleController` ao mesmo GameObject.
-2. Atribua a referência de `ExampleInput` no controller.
-3. Entre em Play Mode e mexa em `ExampleInput.Move` e `ExampleInput.IsGrounded`, pelo Inspector ou
-   pelo seu próprio código de input.
+1. Add `ExampleInput` and `ExampleController` to the same GameObject.
+2. Assign the `ExampleInput` reference on the controller.
+3. Enter play mode and change `Move` and `IsGrounded` on `ExampleInput`, from the inspector or from
+   your own input code.
 
-## Como o exemplo é montado
+Moving the `Move` vector away from zero switches to `Walk` and the transform starts translating;
+clearing it goes back to `Idle`. Unchecking `IsGrounded` leaves the whole branch for `Airborne`.
 
-### 1. Context
+## What to look at
 
-`ExampleContext` é uma classe comum com tudo o que os States precisam. Ele é criado pelo controller
-e pertence àquela máquina.
-
-### 2. States
-
-`GroundedState`, `IdleState`, `WalkState` e `AirborneState` derivam de `FyniteState<ExampleContext>`.
-Cada um sobrescreve só os callbacks que usa e lê `Context`, `DeltaTime` e `FixedDeltaTime` como
-propriedades. Um State não sabe se é pai, filho ou plano.
-
-### 3. Predicados
-
-`HasMovement`, `HasNoMovement`, `IsGrounded` e `IsAirborne` implementam `IPredicate<ExampleContext>`
-e respondem uma pergunta cada. Um predicado não muda nada.
-
-### 4. Módulos de transição
-
-`LocomotionTransitions` cuida de `Idle ↔ Walk` e `AirTransitions` cuida de `Grounded ↔ Airborne`. As
-transições ficam aqui, nunca dentro dos States.
-
-Como `Grounded` é o pai de `Idle` e `Walk`, a regra `Grounded → Airborne` vale para os dois filhos
-sem precisar ser repetida: as transições do filho ativo são avaliadas primeiro e, quando nenhuma
-vence, as do pai entram.
-
-### 5. Attach
+`ExampleController` is the only file that knows how the machine is composed:
 
 ```csharp
-using Fynite;
-
 machine = Machine
     .Attach(this, context)
     .Start<GroundedState>()
@@ -62,16 +37,19 @@ machine = Machine
     .Build();
 ```
 
-`Build()` entra em `GroundedState` e, em seguida, no seu filho inicial `IdleState` — o primeiro filho
-declarado. Depois registra a máquina no Unity PlayerLoop.
+It creates the context in `Awake`, declares the two children of `Grounded` and registers the two
+transition modules. It has no `Update` and no `FixedUpdate`, because the PlayerLoop drives the
+machine, and no `OnDestroy`, because destroying the owner shuts the machine down on its own.
 
-Uma máquina sem nenhum `Child` continua sendo uma FSM plana; a hierarquia é opcional.
+`ExampleContext` carries what the states need: the input component and the movement helpers. It is
+created by the controller and belongs to that machine alone.
 
-### 6. A máquina roda sozinha
+`IdleState`, `WalkState`, `GroundedState` and `AirborneState` each override only the callbacks they
+use. None of them knows which state comes next.
 
-`Update` e `FixedUpdate` são dirigidos pelo PlayerLoop, então o controller não tem nenhum dos dois.
-Em cada frame, `Grounded` roda antes do filho ativo.
+`HasMovement`, `HasNoMovement`, `IsGrounded` and `IsAirborne` are the predicates — one question
+each, no side effects.
 
-A máquina também é descartada automaticamente quando o owner é destruído: o `Exit` roda do filho para
-o pai e o registro sai do loop sem que o controller precise de `OnDestroy`. `Dispose()` explícito só
-é necessário quando a máquina deve ser encerrada antes da destruição do owner.
+`LocomotionTransitions` routes `Idle` and `Walk`, and `AirTransitions` routes `Grounded` and
+`Airborne`. Because `Grounded` is the parent, its rule to leave for `Airborne` covers both children
+without being written twice.

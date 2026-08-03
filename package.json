@@ -2,7 +2,7 @@
   "name": "com.natteens.fynite",
   "version": "0.9.0",
   "displayName": "Fynite",
-  "description": "State machine code-first e type-safe, dirigida automaticamente pelo Unity PlayerLoop.",
+  "description": "A code-first, type-safe state machine for Unity, driven automatically by the PlayerLoop.",
   "keywords": [
     "Unity",
     "GameDev",
@@ -20,7 +20,7 @@
   "samples": [
     {
       "displayName": "Code First",
-      "description": "Grounded com Idle/Walk como filhos e um Airborne de topo, montado em código: Context, States, predicados e módulos de transições, sem Update manual.",
+      "description": "A Grounded state holding Idle and Walk, next to an Airborne state, assembled in code: context, states, predicates and transition modules, with no manual Update.",
       "path": "Samples~/CodeFirst"
     }
   ]
