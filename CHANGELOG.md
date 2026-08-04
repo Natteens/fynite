@@ -1,3 +1,10 @@
+# [0.11.0](https://github.com/Natteens/fynite/compare/v0.10.0...v0.11.0) (2026-08-04)
+
+
+### Features
+
+* Add state activities with step-based sequencing ([1e02e72](https://github.com/Natteens/fynite/commit/1e02e726b79432e760a5f115ae831328fd69326a))
+
 # [0.10.0](https://github.com/Natteens/fynite/compare/v0.9.0...v0.10.0) (2026-08-04)
 
 
