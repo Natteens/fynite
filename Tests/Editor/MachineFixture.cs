@@ -79,5 +79,15 @@ namespace FyniteTests
                 .Child<AirborneProbe, FallingProbe>()
                 .Use<PlayerBranchModule>()
                 .Build());
+
+        /// <summary>The same shape as <see cref="BuildBranches"/>, routed entirely by events.</summary>
+        protected FyniteMachine<ProbeContext> BuildEventBranches()
+            => Track(Attach()
+                .Start<GroundedProbe>()
+                .Child<GroundedProbe, LocomotionProbe>()
+                .Child<GroundedProbe, AttackProbe>()
+                .Child<AirborneProbe, FallingProbe>()
+                .Use<BranchEventModule>()
+                .Build());
     }
 }

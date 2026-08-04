@@ -103,6 +103,101 @@ namespace FyniteTests
         }
 
         [Test]
+        public void FyniteEventExposesNothingButPublish()
+        {
+            var type = RuntimeAssembly.GetType("Fynite.FyniteEvent", false);
+
+            Assert.That(type, Is.Not.Null);
+            Assert.That(type.IsPublic && type.IsSealed, Is.True);
+
+            var members = type
+                .GetMembers(BindingFlags.Public | BindingFlags.Instance |
+                            BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Select(member => member.Name)
+                .ToArray();
+
+            Assert.That(members, Is.EquivalentTo(new[] { ".ctor", "Publish" }));
+
+            var publish = type.GetMethod("Publish");
+            Assert.That(publish.GetParameters(), Is.Empty);
+            Assert.That(publish.ReturnType, Is.EqualTo(typeof(void)));
+        }
+
+        [Test]
+        public void ThereIsNoEventInterfaceAndNoGenericEvent()
+        {
+            Assert.That(RuntimeAssembly.GetType("Fynite.IFyniteEvent", false), Is.Null);
+            Assert.That(RuntimeAssembly.GetType("Fynite.FyniteEvent`1", false), Is.Null);
+
+            var strays = RuntimeAssembly
+                .GetTypes()
+                .Where(type => type.IsInterface && type.Name.IndexOf("Event", StringComparison.Ordinal) >= 0)
+                .Where(type => type.IsPublic)
+                .Select(type => type.FullName)
+                .ToArray();
+
+            Assert.That(strays, Is.Empty);
+        }
+
+        [Test]
+        public void TheMachineHasNoManualEventEntryPoint()
+        {
+            var forbidden = new[] { "Send", "Raise", "Trigger", "Publish", "Subscribe", "Unsubscribe" };
+            var offenders = new List<string>();
+
+            foreach (var type in RuntimeAssembly.GetExportedTypes())
+            {
+                if (type.Name == "FyniteEvent")
+                {
+                    continue;
+                }
+
+                foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance |
+                                                       BindingFlags.Static | BindingFlags.DeclaredOnly))
+                {
+                    if (Array.IndexOf(forbidden, member.Name) >= 0)
+                    {
+                        offenders.Add($"{type.FullName}.{member.Name}");
+                    }
+                }
+            }
+
+            Assert.That(offenders, Is.Empty);
+        }
+
+        [Test]
+        public void OnIsDeclaredOnTheTransitionTarget()
+        {
+            var on = typeof(FyniteTransitionTarget<ProbeContext>)
+                .GetMethod("On", BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.That(on, Is.Not.Null);
+            Assert.That(on.ReturnType, Is.EqualTo(typeof(FyniteTransitions<ProbeContext>)));
+
+            var parameters = on.GetParameters();
+            Assert.That(parameters, Has.Length.EqualTo(1));
+            Assert.That(
+                parameters[0].ParameterType,
+                Is.EqualTo(typeof(Func<ProbeContext, FyniteEvent>)));
+        }
+
+        [Test]
+        public void TheOtherWaysOfDeclaringATransitionSurvive()
+        {
+            var target = typeof(FyniteTransitionTarget<ProbeContext>);
+
+            Assert.That(target.GetMethod("When", new[] { typeof(Func<ProbeContext, bool>) }), Is.Not.Null);
+            Assert.That(
+                target.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                    .Any(method => method.Name == "When" && method.IsGenericMethodDefinition),
+                Is.True);
+
+            var transitions = typeof(FyniteTransitions<ProbeContext>);
+            Assert.That(transitions.GetMethod("Any"), Is.Not.Null);
+            Assert.That(transitions.GetMethod("From"), Is.Not.Null);
+        }
+
+        [Test]
         public void ThereIsNoAmbiguityDiagnosticsSwitch()
         {
             Assert.That(RuntimeAssembly.GetType("Fynite.FyniteDiagnostics", false), Is.Null);

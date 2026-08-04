@@ -223,12 +223,12 @@ namespace FyniteTests
                 transitions
                     .From<IdleProbe>()
                     .To<WalkProbe>()
-                    .When(static context => context.ToWalk);
+                    .When(context => context.ToWalk);
 
                 transitions
                     .From<WalkProbe>()
                     .To<IdleProbe>()
-                    .When(static context => context.ToIdle);
+                    .When(context => context.ToIdle);
             }
         }
 

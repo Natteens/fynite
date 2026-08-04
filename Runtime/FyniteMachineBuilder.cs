@@ -113,7 +113,7 @@ namespace Fynite
                 modules[i].Configure(transitions);
             }
 
-            var definition = transitions.Compile(hierarchy);
+            var definition = transitions.Compile(hierarchy, context);
             var startParent = definition.Hierarchy.Parent[startIndex];
 
             if (startParent >= 0)

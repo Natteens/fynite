@@ -18,6 +18,16 @@ namespace FyniteTests
         public bool ToLocomotion;
         public bool ToSelf;
 
+        public readonly FyniteEvent Alpha = new FyniteEvent();
+        public readonly FyniteEvent Beta = new FyniteEvent();
+        public readonly FyniteEvent Gamma = new FyniteEvent();
+
+        /// <summary>How often a selector asked for <see cref="Counted"/>.</summary>
+        public int Lookups;
+
+        /// <summary>How often <see cref="AskedPredicate"/> was evaluated.</summary>
+        public int PredicateCalls;
+
         public float LastDelta = float.NaN;
         public float LastFixedDelta = float.NaN;
 
@@ -28,6 +38,19 @@ namespace FyniteTests
 
         /// <summary>A log entry such as "GroundedProbe.Update" that makes that callback throw.</summary>
         public string ThrowOn;
+
+        /// <summary>The same instance as <see cref="Alpha"/>, counting every read.</summary>
+        public FyniteEvent Counted
+        {
+            get
+            {
+                Lookups++;
+                return Alpha;
+            }
+        }
+
+        /// <summary>An event source that was never created.</summary>
+        public FyniteEvent Missing => null;
 
         public string Trace => string.Join(",", Log);
 
@@ -134,6 +157,26 @@ namespace FyniteTests
     public sealed class Always : IPredicate<ProbeContext>
     {
         public bool Evaluate(ProbeContext context) => true;
+    }
+
+    /// <summary>Never matches, and records that it was asked at all.</summary>
+    public sealed class AskedPredicate : IPredicate<ProbeContext>
+    {
+        public bool Evaluate(ProbeContext context)
+        {
+            context.PredicateCalls++;
+            return false;
+        }
+    }
+
+    /// <summary>Publishes while it is being evaluated, which is the worst moment to publish.</summary>
+    public sealed class PublishingPredicate : IPredicate<ProbeContext>
+    {
+        public bool Evaluate(ProbeContext context)
+        {
+            context.Alpha.Publish();
+            return false;
+        }
     }
 
     public sealed class ThrowingPredicate : IPredicate<ProbeContext>

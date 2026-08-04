@@ -122,6 +122,6 @@ namespace FyniteTests
             => transitions
                 .From<PlayModeChild>()
                 .To<PlayModeSibling>()
-                .When(static context => context.Go);
+                .When(context => context.Go);
     }
 }

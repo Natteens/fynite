@@ -178,6 +178,6 @@ namespace FyniteTests
             => transitions
                 .From<PlayModeStart>()
                 .To<PlayModeTarget>()
-                .When(static context => context.Go);
+                .When(context => context.Go);
     }
 }
