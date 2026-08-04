@@ -1,0 +1,60 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <ui:VisualElement name="window-root" class="fynite-root">
+
+        <uie:Toolbar name="toolbar" class="fynite-toolbar">
+            <ui:Label name="machine-count-label" text="0 machines" class="fynite-count" />
+            <ui:VisualElement name="toolbar-spacer" class="fynite-spacer" />
+            <uie:ToolbarButton name="refresh-button" text="Refresh" />
+            <uie:ToolbarToggle name="auto-refresh-toggle" text="Auto Refresh" />
+        </uie:Toolbar>
+
+        <ui:HelpBox name="empty-state" message-type="Info"
+                    text="Enter Play Mode to inspect running Fynite machines."
+                    class="fynite-empty" />
+
+        <ui:TwoPaneSplitView name="content-split" orientation="Horizontal"
+                             fixed-pane-index="0" fixed-pane-initial-dimension="240"
+                             class="fynite-split">
+
+            <ui:VisualElement name="list-panel" class="fynite-panel fynite-list-panel">
+                <ui:Label text="Machines" class="fynite-section" />
+                <ui:ListView name="machine-list" fixed-item-height="20"
+                             selection-type="Single" class="fynite-list" />
+            </ui:VisualElement>
+
+            <ui:VisualElement name="details-panel" class="fynite-panel">
+                <ui:Label text="Details" class="fynite-section" />
+
+                <ui:ScrollView name="details-scroll" class="fynite-details-scroll">
+
+                    <ui:Label name="details-placeholder" text="Select a machine to inspect it."
+                              class="fynite-placeholder" />
+
+                    <ui:VisualElement name="details-content" class="fynite-details">
+
+                        <ui:VisualElement name="owner-row" class="fynite-owner-row">
+                            <uie:ObjectField name="owner-field" label="Owner"
+                                             class="fynite-owner-field" />
+                            <ui:Button name="select-owner-button" text="Select"
+                                       class="fynite-mini-button" />
+                            <ui:Button name="ping-owner-button" text="Ping"
+                                       class="fynite-mini-button" />
+                        </ui:VisualElement>
+
+                        <ui:Label name="owner-missing-label" text="&lt;destroyed owner&gt;"
+                                  class="fynite-missing" />
+
+                        <ui:Label name="context-type-label" class="fynite-field" />
+                        <ui:Label name="status-label" class="fynite-field" />
+                        <ui:Label name="current-state-label" class="fynite-field" />
+
+                        <ui:Label text="Active Path" class="fynite-section fynite-path-title" />
+                        <ui:VisualElement name="active-path-container" class="fynite-path" />
+
+                    </ui:VisualElement>
+                </ui:ScrollView>
+            </ui:VisualElement>
+
+        </ui:TwoPaneSplitView>
+    </ui:VisualElement>
+</ui:UXML>

@@ -5,8 +5,10 @@ using Fynite;
 using FyniteEditor;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.UIElements;
 using Object = UnityEngine.Object;
 
 namespace FyniteTests
@@ -20,7 +22,7 @@ namespace FyniteTests
         private static readonly Regex Boom = new Regex("fynite-test-boom");
 
         [Test]
-        public void TheMenuOpensTheWindow()
+        public void TheMenuOpensTheWindowFromTools()
         {
             FyniteDebuggerWindow window = null;
 
@@ -30,7 +32,9 @@ namespace FyniteTests
 
             try
             {
-                EditorApplication.ExecuteMenuItem("Window/Fynite/Debugger");
+                var opened = EditorApplication.ExecuteMenuItem("Tools/Fynite/Debugger");
+
+                Assert.That(opened, Is.True, "Tools/Fynite/Debugger does not exist");
 
                 window = EditorWindow.GetWindow<FyniteDebuggerWindow>();
 
@@ -47,6 +51,180 @@ namespace FyniteTests
 
                 LogAssert.ignoreFailingMessages = false;
             }
+        }
+
+        [Test]
+        public void TheOldWindowMenuIsGone()
+        {
+            var source = WindowSource();
+
+            Assert.That(
+                source,
+                Does.Not.Contain("\"Window/Fynite/Debugger\""),
+                "the old Window menu entry is still declared");
+            Assert.That(
+                source,
+                Does.Contain("[MenuItem(\"Tools/Fynite/Debugger\")]"),
+                "the Tools menu entry is missing");
+
+            // Exactly one entry, so the item is not registered under two menus at once.
+            Assert.That(CountOf(source, "[MenuItem("), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void TheLayoutAndStyleAssetsLoadAndClone()
+        {
+            var layout = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
+                FyniteDebuggerWindow.LayoutPath);
+            var style = AssetDatabase.LoadAssetAtPath<StyleSheet>(FyniteDebuggerWindow.StylePath);
+
+            Assert.That(layout, Is.Not.Null, FyniteDebuggerWindow.LayoutPath);
+            Assert.That(style, Is.Not.Null, FyniteDebuggerWindow.StylePath);
+
+            var root = new VisualElement();
+            Assert.DoesNotThrow(() => layout.CloneTree(root));
+            Assert.That(root.childCount, Is.GreaterThan(0), "the layout cloned to nothing");
+        }
+
+        [Test]
+        public void TheWindowBuildsEveryElementItNeeds()
+        {
+            var window = ScriptableObject.CreateInstance<FyniteDebuggerWindow>();
+
+            try
+            {
+                window.CreateGUI();
+
+                var root = window.rootVisualElement;
+
+                Assert.That(root.Q<Toolbar>("toolbar"), Is.Not.Null, "toolbar");
+                Assert.That(root.Q<Label>("machine-count-label"), Is.Not.Null, "machine count");
+                Assert.That(root.Q<ToolbarButton>("refresh-button"), Is.Not.Null, "refresh button");
+                Assert.That(root.Q<ToolbarToggle>("auto-refresh-toggle"), Is.Not.Null, "auto refresh");
+                Assert.That(root.Q<HelpBox>("empty-state"), Is.Not.Null, "empty state");
+                Assert.That(root.Q<TwoPaneSplitView>("content-split"), Is.Not.Null, "split");
+                Assert.That(root.Q<ListView>("machine-list"), Is.Not.Null, "list");
+                Assert.That(root.Q<VisualElement>("details-panel"), Is.Not.Null, "details panel");
+                Assert.That(root.Q<ObjectField>("owner-field"), Is.Not.Null, "owner field");
+                Assert.That(root.Q<Button>("select-owner-button"), Is.Not.Null, "select button");
+                Assert.That(root.Q<Button>("ping-owner-button"), Is.Not.Null, "ping button");
+                Assert.That(root.Q<Label>("context-type-label"), Is.Not.Null, "context type");
+                Assert.That(root.Q<Label>("status-label"), Is.Not.Null, "status");
+                Assert.That(root.Q<Label>("current-state-label"), Is.Not.Null, "current state");
+                Assert.That(root.Q<VisualElement>("active-path-container"), Is.Not.Null, "active path");
+            }
+            finally
+            {
+                Object.DestroyImmediate(window);
+            }
+        }
+
+        [Test]
+        public void TheWindowStartsWithAutoRefreshOnAndTheRightMessages()
+        {
+            var window = ScriptableObject.CreateInstance<FyniteDebuggerWindow>();
+
+            try
+            {
+                window.CreateGUI();
+
+                var root = window.rootVisualElement;
+
+                Assert.That(root.Q<ToolbarToggle>("auto-refresh-toggle").value, Is.True);
+
+                // Edit mode: the message says so, and the split is out of the way.
+                Assert.That(
+                    root.Q<HelpBox>("empty-state").text,
+                    Is.EqualTo(FyniteDebuggerWindow.NotPlayingMessage));
+                Assert.That(
+                    root.Q<TwoPaneSplitView>("content-split").style.display.value,
+                    Is.EqualTo(DisplayStyle.None));
+
+                // Nothing is selected, so the details panel says what to do instead of showing stale
+                // fields.
+                Assert.That(
+                    root.Q<Label>("details-placeholder").text,
+                    Is.EqualTo(FyniteDebuggerWindow.NoSelectionMessage));
+                Assert.That(
+                    root.Q<Label>("details-placeholder").style.display.value,
+                    Is.EqualTo(DisplayStyle.Flex));
+                Assert.That(
+                    root.Q<VisualElement>("details-content").style.display.value,
+                    Is.EqualTo(DisplayStyle.None));
+            }
+            finally
+            {
+                Object.DestroyImmediate(window);
+            }
+        }
+
+        [Test]
+        public void RebuildingTheUiDoesNotLeaveTwoOfAnything()
+        {
+            var window = ScriptableObject.CreateInstance<FyniteDebuggerWindow>();
+
+            try
+            {
+                window.CreateGUI();
+                window.CreateGUI();
+                window.CreateGUI();
+
+                var root = window.rootVisualElement;
+
+                // A second clone of the tree would show up as duplicated named elements.
+                Assert.That(root.Query<ListView>("machine-list").ToList(), Has.Count.EqualTo(1));
+                Assert.That(root.Query<Toolbar>("toolbar").ToList(), Has.Count.EqualTo(1));
+                Assert.That(root.Query<HelpBox>("empty-state").ToList(), Has.Count.EqualTo(1));
+                Assert.That(
+                    root.Query<ToolbarToggle>("auto-refresh-toggle").ToList(),
+                    Has.Count.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(window);
+            }
+        }
+
+        [Test]
+        public void TheAutoRefreshToggleDoesNotThrowWhenSwitched()
+        {
+            var window = ScriptableObject.CreateInstance<FyniteDebuggerWindow>();
+
+            try
+            {
+                window.CreateGUI();
+
+                var toggle = window.rootVisualElement.Q<ToolbarToggle>("auto-refresh-toggle");
+
+                Assert.DoesNotThrow(() => toggle.value = false);
+                Assert.That(toggle.value, Is.False);
+
+                Assert.DoesNotThrow(() => toggle.value = true);
+                Assert.That(toggle.value, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(window);
+            }
+        }
+
+        [Test]
+        public void TheWindowIsFreeOfImgui()
+        {
+            var source = WindowSource();
+
+            foreach (var banned in new[]
+                     {
+                         "OnGUI", "EditorGUILayout", "EditorGUI.", "GUILayout", "GUIStyle",
+                         "IMGUIContainer", "BeginScrollView", "EndScrollView", "DisabledScope"
+                     })
+            {
+                Assert.That(source, Does.Not.Contain(banned), banned);
+            }
+
+            // Pinging is not IMGUI layout; it is the only EditorGUIUtility call the window makes.
+            Assert.That(source, Does.Contain("EditorGUIUtility.PingObject"));
+            Assert.That(CountOf(source, "EditorGUIUtility."), Is.EqualTo(1));
         }
 
         [Test]
@@ -396,30 +574,70 @@ namespace FyniteTests
         }
 
         [Test]
-        public void TheOwnerRowPingsAndIsNotDisabled()
+        public void TheOwnerFieldIsNeverAnEditor()
         {
-            var source = File.ReadAllText(Path.GetFullPath(
-                Path.Combine("Packages", "com.natteens.fynite", "Editor", "FyniteDebuggerWindow.cs")));
+            var source = WindowSource();
 
+            // No change callback means nothing a user drops on the field can reach a machine.
             Assert.That(
                 source,
-                Does.Contain("EditorGUIUtility.PingObject"),
-                "the window never pings the owner");
-
-            var field = source.IndexOf("ObjectField(\"Owner\"", StringComparison.Ordinal);
-            Assert.That(field, Is.GreaterThan(0), "the owner field moved or was renamed");
-
-            // The only DisabledScope near the owner row must be the one wrapping the two buttons, so
-            // the field itself stays interactive.
-            var rowStart = source.LastIndexOf("private static void DrawOwner", StringComparison.Ordinal);
-            Assert.That(rowStart, Is.GreaterThan(0));
-
-            var beforeField = source.Substring(rowStart, field - rowStart);
-
+                Does.Not.Contain("ownerField.RegisterValueChangedCallback"),
+                "the owner field listens for edits");
             Assert.That(
-                beforeField,
-                Does.Not.Contain("DisabledScope"),
-                "the owner ObjectField is inside a DisabledScope again");
+                source,
+                Does.Contain("ownerField.SetValueWithoutNotify"),
+                "the owner field is set in a way that could raise a change event");
+        }
+
+        [Test]
+        public void TheDetailsPanelShowsTheSelectedMachine()
+        {
+            BuildLocomotion();
+
+            var window = ScriptableObject.CreateInstance<FyniteDebuggerWindow>();
+
+            try
+            {
+                window.CreateGUI();
+
+                var root = window.rootVisualElement;
+                var list = root.Q<ListView>("machine-list");
+
+                // Edit mode does not collect, so drive the model the way a refresh would.
+                var model = new FyniteDebuggerModel();
+                model.Refresh();
+
+                Assert.That(model.Count, Is.EqualTo(1), "the machine was not collected");
+
+                var entry = model.GetEntry(0);
+
+                Assert.That(entry.ListLabel, Does.Contain("IdleProbe"));
+                Assert.That(entry.ContextTypeName, Is.EqualTo(nameof(ProbeContext)));
+                Assert.That(entry.Owner, Is.SameAs(Owner));
+                Assert.That(list, Is.Not.Null);
+            }
+            finally
+            {
+                Object.DestroyImmediate(window);
+            }
+        }
+
+        private static string WindowSource()
+            => File.ReadAllText(Path.GetFullPath(
+                Path.Combine("Packages", "com.natteens.fynite", "Editor", "FyniteDebuggerWindow.cs")));
+
+        private static int CountOf(string text, string term)
+        {
+            var total = 0;
+            var at = text.IndexOf(term, StringComparison.Ordinal);
+
+            while (at >= 0)
+            {
+                total++;
+                at = text.IndexOf(term, at + term.Length, StringComparison.Ordinal);
+            }
+
+            return total;
         }
 
         private static int IndexOfLeaf(FyniteDebuggerModel model, System.Type leaf)

@@ -393,7 +393,7 @@ over it every frame allocates nothing.
 
 ## Runtime debugger
 
-Open **Window > Fynite > Debugger** to watch the machines the PlayerLoop is driving. It lists every
+Open **Tools > Fynite > Debugger** to watch the machines the PlayerLoop is driving. It lists every
 running machine, and shows the owner, the context type and the full active path of the one you pick,
 from the top level state down to the current one.
 
@@ -402,7 +402,8 @@ register. The window is read only — it watches machines, it never starts, stop
 it asks the loop for what it needs a few times a second rather than being told, so a machine costs
 exactly the same whether the window is open or has never been opened.
 
-The debugger lives in an Editor-only assembly and does not go into a player build.
+It is built with the Editor's own UI toolkit, so it follows the theme and docks like any other
+window. The debugger lives in an Editor-only assembly and does not go into a player build.
 
 ## Installation
 

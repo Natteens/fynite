@@ -1,0 +1,124 @@
+/* Layout and spacing only, plus the two theme colours the Editor already defines, so the window
+   reads correctly in both the dark and the light theme. */
+
+.fynite-root {
+    flex-grow: 1;
+}
+
+.fynite-toolbar {
+    flex-direction: row;
+    align-items: center;
+}
+
+.fynite-count {
+    -unity-text-align: middle-left;
+    padding-left: 6px;
+    padding-right: 6px;
+    min-width: 90px;
+}
+
+.fynite-spacer {
+    flex-grow: 1;
+}
+
+.fynite-empty {
+    margin: 8px;
+}
+
+.fynite-split {
+    flex-grow: 1;
+}
+
+.fynite-panel {
+    flex-grow: 1;
+    min-width: 140px;
+}
+
+.fynite-list-panel {
+    border-right-width: 1px;
+    border-right-color: var(--unity-colors-default-border);
+}
+
+.fynite-section {
+    -unity-font-style: bold;
+    padding-top: 4px;
+    padding-bottom: 2px;
+    padding-left: 6px;
+    color: var(--unity-colors-label-text);
+}
+
+.fynite-list {
+    flex-grow: 1;
+}
+
+.fynite-list-item {
+    -unity-text-align: middle-left;
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+.fynite-details-scroll {
+    flex-grow: 1;
+}
+
+.fynite-details {
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-bottom: 6px;
+}
+
+.fynite-placeholder {
+    padding: 8px;
+    white-space: normal;
+}
+
+.fynite-owner-row {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+.fynite-owner-field {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-right: 4px;
+}
+
+.fynite-mini-button {
+    min-width: 46px;
+    margin-left: 2px;
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+.fynite-missing {
+    padding-left: 2px;
+    padding-bottom: 2px;
+    -unity-font-style: italic;
+}
+
+.fynite-field {
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+.fynite-path-title {
+    padding-left: 0;
+    margin-top: 6px;
+}
+
+.fynite-path {
+    padding-bottom: 4px;
+}
+
+.active-path-row {
+    padding-top: 1px;
+    padding-bottom: 1px;
+    white-space: nowrap;
+}
+
+/* The leaf is bold and also says "(current)", so it never depends on styling alone. */
+.active-path-leaf {
+    -unity-font-style: bold;
+}
