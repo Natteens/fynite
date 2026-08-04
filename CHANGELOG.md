@@ -1,3 +1,10 @@
+## [0.14.1](https://github.com/Natteens/fynite/compare/v0.14.0...v0.14.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* Harden runtime lifecycle and simplify internals ([b06b054](https://github.com/Natteens/fynite/commit/b06b05486fa97fc89dce12e7171924036bb64469))
+
 # [0.14.0](https://github.com/Natteens/fynite/compare/v0.13.0...v0.14.0) (2026-08-04)
 
 

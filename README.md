@@ -44,12 +44,12 @@ uses reflection or LINQ.
 Requires Unity **6000.5** or newer, and depends on no other package.
 
 <!-- fynite-release:start -->
-The latest published release is **v0.14.0**.
+The latest published release is **v0.14.1**.
 
 In the Unity Package Manager, choose *Add package from git URL* and paste:
 
 ```
-https://github.com/Natteens/fynite.git#v0.14.0
+https://github.com/Natteens/fynite.git#v0.14.1
 ```
 
 Or declare the dependency in `Packages/manifest.json`:
@@ -57,7 +57,7 @@ Or declare the dependency in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.natteens.fynite": "https://github.com/Natteens/fynite.git#v0.14.0"
+    "com.natteens.fynite": "https://github.com/Natteens/fynite.git#v0.14.1"
   }
 }
 ```
