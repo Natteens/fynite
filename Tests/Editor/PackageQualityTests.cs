@@ -31,6 +31,24 @@ namespace FyniteTests
         }
 
         [Test]
+        public void RuntimeSequencesWithoutCoroutinesOrTasks()
+        {
+            AssertRuntimeFree("IEnumerator");
+            AssertRuntimeFree("Coroutine");
+            AssertRuntimeFree("Task");
+            AssertRuntimeFree("async ");
+            AssertRuntimeFree("await ");
+            AssertRuntimeFree("yield ");
+        }
+
+        [Test]
+        public void RuntimeHasNoParallelOrBranchingActivities()
+        {
+            AssertRuntimeFree("Parallel");
+            AssertRuntimeFree("branch =>");
+        }
+
+        [Test]
         public void PackageHasNoGraphToolkitReferences()
         {
             foreach (var file in EnumerateSources())

@@ -147,7 +147,8 @@ namespace FyniteTests
 
             foreach (var type in RuntimeAssembly.GetExportedTypes())
             {
-                if (type.Name == "FyniteEvent")
+                // FyniteEvent is where publishing lives, and an activity step declares one.
+                if (type.Name == "FyniteEvent" || type.Name.StartsWith("FyniteActivityBuilder`", StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -163,6 +164,115 @@ namespace FyniteTests
             }
 
             Assert.That(offenders, Is.Empty);
+        }
+
+        [Test]
+        public void FyniteActivityBuilderExposesOnlyTheFiveSteps()
+        {
+            var type = typeof(FyniteActivityBuilder<ProbeContext>);
+
+            Assert.That(type.IsPublic && type.IsSealed, Is.True);
+
+            var members = type
+                .GetMembers(BindingFlags.Public | BindingFlags.Instance |
+                            BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Select(member => member.Name)
+                .ToArray();
+
+            Assert.That(
+                members,
+                Is.EquivalentTo(new[] { "Do", "Wait", "WaitUntil", "WaitFor", "Publish" }),
+                "the builder grew a member, or its constructor became public");
+
+            foreach (var name in members)
+            {
+                Assert.That(type.GetMethod(name).ReturnType, Is.EqualTo(type), $"{name} does not chain");
+            }
+        }
+
+        [Test]
+        public void ActivityStepsTakeTheDeclaredParameters()
+        {
+            var type = typeof(FyniteActivityBuilder<ProbeContext>);
+
+            Assert.That(
+                type.GetMethod("Do").GetParameters()[0].ParameterType,
+                Is.EqualTo(typeof(Action<ProbeContext>)));
+            Assert.That(
+                type.GetMethod("Wait").GetParameters()[0].ParameterType,
+                Is.EqualTo(typeof(float)));
+            Assert.That(
+                type.GetMethod("WaitUntil").GetParameters()[0].ParameterType,
+                Is.EqualTo(typeof(Func<ProbeContext, bool>)));
+            Assert.That(
+                type.GetMethod("WaitFor").GetParameters()[0].ParameterType,
+                Is.EqualTo(typeof(Func<ProbeContext, FyniteEvent>)));
+            Assert.That(
+                type.GetMethod("Publish").GetParameters()[0].ParameterType,
+                Is.EqualTo(typeof(Func<ProbeContext, FyniteEvent>)));
+        }
+
+        [Test]
+        public void ConfigureActivityIsProtectedAndVirtual()
+        {
+            var method = typeof(FyniteState<ProbeContext>).GetMethod(
+                "ConfigureActivity",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+
+            Assert.That(method, Is.Not.Null);
+            Assert.That(method.IsFamily, Is.True, "ConfigureActivity must be protected");
+            Assert.That(method.IsVirtual, Is.True);
+            Assert.That(
+                method.GetParameters()[0].ParameterType,
+                Is.EqualTo(typeof(FyniteActivityBuilder<ProbeContext>)));
+        }
+
+        [Test]
+        public void ActivitiesAddNoOtherPublicType()
+        {
+            var exported = RuntimeAssembly
+                .GetExportedTypes()
+                .Select(type => type.Name)
+                .ToArray();
+
+            Assert.That(
+                exported,
+                Is.EquivalentTo(new[]
+                {
+                    "Machine",
+                    "FyniteMachine`1",
+                    "FyniteMachineBuilder`1",
+                    "FyniteState`1",
+                    "FyniteTransitions`1",
+                    "FyniteTransitionSource`1",
+                    "FyniteTransitionTarget`1",
+                    "IFyniteTransitions`1",
+                    "IPredicate`1",
+                    "FyniteEvent",
+                    "FyniteActivityBuilder`1"
+                }));
+        }
+
+        [Test]
+        public void ThereIsNoActivityRunnerHandleOrStatus()
+        {
+            var forbidden = new[]
+            {
+                "Fynite.FyniteActivity",
+                "Fynite.IFyniteActivity",
+                "Fynite.ActivityHandle",
+                "Fynite.ActivityRunner",
+                "Fynite.ActivityStatus",
+                "Fynite.ActivityToken",
+                "Fynite.Sequence",
+                "Fynite.Parallel",
+                "Fynite.Branch"
+            };
+
+            foreach (var name in forbidden)
+            {
+                Assert.That(RuntimeAssembly.GetType(name, false), Is.Null, name);
+            }
         }
 
         [Test]

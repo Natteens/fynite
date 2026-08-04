@@ -22,6 +22,7 @@ namespace FyniteSamples.CodeFirst
                 .Child<GroundedState, WalkState>()
                 .Use<LocomotionTransitions>()
                 .Use<AirTransitions>()
+                .Use<ActionTransitions>()
                 .Build();
         }
     }

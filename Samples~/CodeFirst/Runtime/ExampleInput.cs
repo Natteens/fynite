@@ -12,6 +12,8 @@ namespace FyniteSamples.CodeFirst
 
         public FyniteEvent Landed { get; } = new FyniteEvent();
 
+        public FyniteEvent ActionRequested { get; } = new FyniteEvent();
+
         public Vector2 Move
         {
             get => move;
@@ -36,5 +38,8 @@ namespace FyniteSamples.CodeFirst
             IsGrounded = true;
             Landed.Publish();
         }
+
+        [ContextMenu("Request action")]
+        public void RequestAction() => ActionRequested.Publish();
     }
 }

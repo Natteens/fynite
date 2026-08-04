@@ -80,6 +80,15 @@ namespace FyniteTests
                 .Use<PlayerBranchModule>()
                 .Build());
 
+        /// <summary>Shell &gt; Left (initial), Right — next to Outside. Every state has an activity.</summary>
+        protected FyniteMachine<ProbeContext> BuildShell()
+            => Track(Attach()
+                .Start<ShellProbe>()
+                .Child<ShellProbe, LeftProbe>()
+                .Child<ShellProbe, RightProbe>()
+                .Use<ShellModule>()
+                .Build());
+
         /// <summary>The same shape as <see cref="BuildBranches"/>, routed entirely by events.</summary>
         protected FyniteMachine<ProbeContext> BuildEventBranches()
             => Track(Attach()

@@ -28,6 +28,12 @@ namespace FyniteTests
         /// <summary>How often <see cref="AskedPredicate"/> was evaluated.</summary>
         public int PredicateCalls;
 
+        /// <summary>What the <c>WaitUntil</c> of the activity probes is waiting for.</summary>
+        public bool Unlocked;
+
+        /// <summary>How often the activity probes evaluated a counted <c>WaitUntil</c>.</summary>
+        public int Conditions;
+
         public float LastDelta = float.NaN;
         public float LastFixedDelta = float.NaN;
 
@@ -53,6 +59,12 @@ namespace FyniteTests
         public FyniteEvent Missing => null;
 
         public string Trace => string.Join(",", Log);
+
+        /// <summary>
+        /// Writes into the same log the state callbacks use, so a trace shows activity steps and
+        /// callbacks interleaved in the order they really ran.
+        /// </summary>
+        public void Mark(string entry) => Log.Add(entry);
 
         public int CountOf(string entry)
         {
@@ -227,6 +239,7 @@ namespace FyniteTests
             ProbeState.Instances = 0;
             LocomotionModule.Configured = 0;
             DeathModule.Configured = 0;
+            ActivityReset.All();
             FyniteLoop.Clear();
         }
     }

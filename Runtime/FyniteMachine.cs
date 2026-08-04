@@ -137,6 +137,11 @@ namespace Fynite
                     states[i].Bind(context, time);
                 }
 
+                for (var i = 0; i < states.Length; i++)
+                {
+                    states[i].BuildActivity(context);
+                }
+
                 status = FyniteMachineStatus.Running;
                 activeCount = ResolvePath(startIndex, activePath);
 
