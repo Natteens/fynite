@@ -1,3 +1,10 @@
+# [0.15.0](https://github.com/Natteens/fynite/compare/v0.14.1...v0.15.0) (2026-08-04)
+
+
+### Features
+
+* Harden fluent builders and move docs ([dd94315](https://github.com/Natteens/fynite/commit/dd94315841b91eb06a06ed335e2ccd7fd002d14a))
+
 ## [0.14.1](https://github.com/Natteens/fynite/compare/v0.14.0...v0.14.1) (2026-08-04)
 
 
