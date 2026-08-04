@@ -1,3 +1,10 @@
+# [0.13.0](https://github.com/Natteens/fynite/compare/v0.12.1...v0.13.0) (2026-08-04)
+
+
+### Features
+
+* Add active path API and coverage tests ([112c305](https://github.com/Natteens/fynite/commit/112c3053f5dd9221cc70ed9f0f2c5312bf79ec8c))
+
 ## [0.12.1](https://github.com/Natteens/fynite/compare/v0.12.0...v0.12.1) (2026-08-04)
 
 
