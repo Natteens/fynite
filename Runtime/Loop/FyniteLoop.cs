@@ -230,6 +230,36 @@ namespace Fynite
             needsCompaction = false;
         }
 
+#if UNITY_EDITOR
+        /// <summary>
+        /// Copies the machines the loop currently holds into a list the caller owns and reuses, for the
+        /// Editor debugger. Stopped machines and the holes left by unregistering are skipped, and the
+        /// loop's own lists never leave this class. A machine sits in exactly one of the two lists —
+        /// <see cref="TryRegister"/> refuses a machine that already has a slot — so nothing can arrive
+        /// twice.
+        /// </summary>
+        internal static void CollectDebugViews(List<IFyniteDebugView> destination)
+        {
+            destination.Clear();
+
+            CollectDebugViews(machines, destination);
+            CollectDebugViews(pending, destination);
+        }
+
+        private static void CollectDebugViews(
+            List<IFyniteTickable> source,
+            List<IFyniteDebugView> destination)
+        {
+            for (var i = 0; i < source.Count; i++)
+            {
+                if (source[i] is IFyniteDebugView view && view.DebugIsRunning)
+                {
+                    destination.Add(view);
+                }
+            }
+        }
+#endif
+
         internal static void RunUpdate()
         {
 #if UNITY_EDITOR

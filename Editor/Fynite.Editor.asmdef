@@ -1,0 +1,18 @@
+{
+  "name": "Fynite.Editor",
+  "rootNamespace": "Fynite.Editor",
+  "references": [
+    "Fynite"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

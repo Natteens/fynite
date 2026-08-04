@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using Fynite;
 using NUnit.Framework;
@@ -66,6 +67,82 @@ namespace FyniteTests
         public void RuntimeDoesNotUseLinq()
         {
             AssertRuntimeFree("System." + "Linq");
+        }
+
+        /// <summary>
+        /// The debugger is pull based. Nothing in the Runtime pushes, records or remembers anything for
+        /// it, so a machine costs the same whether the window is open or does not exist.
+        /// </summary>
+        [Test]
+        public void RuntimeHasNoObserverOrHistory()
+        {
+            AssertRuntimeFree("IFynite" + "Observer");
+            AssertRuntimeFree("Fynite" + "Observer");
+            AssertRuntimeFree("OnState" + "Entered");
+            AssertRuntimeFree("OnState" + "Exited");
+            AssertRuntimeFree("OnTransition");
+
+            // Narrower than "StateChanged" on purpose: Unity's own playModeStateChanged is what the
+            // loop hooks to clean up when play mode ends, and that is not a Fynite observer.
+            AssertRuntimeFree("OnState" + "Changed");
+            AssertRuntimeFree("history");
+            AssertRuntimeFree("History");
+            AssertRuntimeFree("event Action");
+        }
+
+        [Test]
+        public void RuntimeTouchesUnityEditorOnlyBehindTheEditorGuard()
+        {
+            var runtime = Path.Combine(PackageRoot, "Runtime");
+
+            foreach (var file in Directory.GetFiles(runtime, "*.cs", SearchOption.AllDirectories))
+            {
+                var text = File.ReadAllText(file);
+
+                if (text.IndexOf("UnityEditor", StringComparison.Ordinal) < 0 &&
+                    text.IndexOf("IFyniteDebugView", StringComparison.Ordinal) < 0 &&
+                    text.IndexOf("CollectDebugViews", StringComparison.Ordinal) < 0)
+                {
+                    continue;
+                }
+
+                Assert.That(
+                    text,
+                    Does.Contain("#if UNITY_EDITOR"),
+                    $"{file} reaches for the Editor without a UNITY_EDITOR guard");
+            }
+        }
+
+        /// <summary>The Editor assembly is Editor only and never steers a machine.</summary>
+        [Test]
+        public void EditorAssemblyIsReadOnlyAndEditorOnly()
+        {
+            var definition = File.ReadAllText(
+                Path.Combine(PackageRoot, "Editor", "Fynite.Editor.asmdef"));
+
+            Assert.That(definition, Does.Contain("\"name\": \"Fynite.Editor\""));
+            Assert.That(definition, Does.Contain("\"Editor\""), "the assembly is not Editor only");
+            Assert.That(definition.ToLowerInvariant(), Does.Not.Contain("graphtoolkit"));
+
+            foreach (var file in Directory.GetFiles(
+                         Path.Combine(PackageRoot, "Editor"),
+                         "*.cs",
+                         SearchOption.AllDirectories))
+            {
+                var text = File.ReadAllText(file);
+
+                Assert.That(text, Does.Not.Contain(ReflectionTerm), file);
+                Assert.That(text, Does.Not.Contain("BindingFlags"), file);
+                Assert.That(text, Does.Not.Contain(ActivatorTerm), file);
+                Assert.That(text, Does.Not.Contain(GraphToolkitTerm), file);
+
+                // Nothing the window can click may change a machine.
+                Assert.That(text, Does.Not.Contain(".Dispose()"), file);
+                Assert.That(text, Does.Not.Contain("Force" + "Transition"), file);
+                Assert.That(text, Does.Not.Contain("Set" + "State"), file);
+                Assert.That(text, Does.Not.Contain("FyniteLoop.Clear"), file);
+                Assert.That(text, Does.Not.Contain(".Tick("), file);
+            }
         }
 
         [Test]
@@ -158,7 +235,7 @@ namespace FyniteTests
         {
             var files = new System.Collections.Generic.List<string>();
 
-            foreach (var folder in new[] { "Runtime", "Tests", "Samples~" })
+            foreach (var folder in new[] { "Runtime", "Editor", "Tests", "Samples~" })
             {
                 var path = Path.Combine(PackageRoot, folder);
                 if (!Directory.Exists(path))

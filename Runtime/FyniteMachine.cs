@@ -8,7 +8,11 @@ namespace Fynite
     /// <summary>
     /// A running machine. Driven by the Unity PlayerLoop; there is no manual update entry point.
     /// </summary>
-    public sealed class FyniteMachine<TContext> : IDisposable, IFyniteTickable where TContext : class
+    public sealed class FyniteMachine<TContext> : IDisposable, IFyniteTickable
+#if UNITY_EDITOR
+        , IFyniteDebugView
+#endif
+        where TContext : class
     {
         /// <summary>
         /// Why a machine is stopping. Every reason runs the same steps; it only decides who owns the
@@ -331,6 +335,20 @@ namespace Fynite
         void IFyniteTickable.LoopUpdate(float deltaTime) => Tick(deltaTime);
 
         void IFyniteTickable.LoopFixedUpdate(float fixedDeltaTime) => TickFixed(fixedDeltaTime);
+
+#if UNITY_EDITOR
+        // Read only, and nothing the public API does not already answer. Explicit implementations, so
+        // none of this widens the surface of the machine.
+        Object IFyniteDebugView.DebugOwner => owner;
+
+        Type IFyniteDebugView.DebugContextType => typeof(TContext);
+
+        bool IFyniteDebugView.DebugIsRunning => IsRunning;
+
+        int IFyniteDebugView.DebugActiveStateCount => ActiveStateCount;
+
+        Type IFyniteDebugView.DebugGetActiveStateType(int index) => GetActiveStateType(index);
+#endif
 
         void IFyniteTickable.LoopShutdown()
         {

@@ -450,6 +450,68 @@ namespace FyniteTests
             Assert.That(sequences, Is.Empty, "a public member returns a collection of states");
         }
 
+        /// <summary>
+        /// The debugger reads through an internal contract. Nothing it needs became public, and no
+        /// public member hands out an owner, a context or a state instance.
+        /// </summary>
+        [Test]
+        public void TheDebugBridgeStaysInternal()
+        {
+            var view = RuntimeAssembly.GetType("Fynite.IFyniteDebugView", false);
+
+            Assert.That(view, Is.Not.Null, "the debug contract is missing");
+            Assert.That(view.IsVisible, Is.False, "IFyniteDebugView became part of the public API");
+
+            var collect = typeof(FyniteLoop).GetMethod(
+                "CollectDebugViews",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
+                null,
+                new[] { typeof(List<>).MakeGenericType(view) },
+                null);
+
+            Assert.That(collect, Is.Not.Null, "the collection entry point is missing");
+            Assert.That(collect.IsPublic, Is.False, "CollectDebugViews became public");
+
+            // Explicit implementations only, so none of the debug members widen the machine.
+            foreach (var member in typeof(FyniteMachine<ProbeContext>).GetMembers(
+                         BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
+            {
+                Assert.That(
+                    member.Name.StartsWith("Debug", StringComparison.Ordinal),
+                    Is.False,
+                    $"{member.Name} is public");
+            }
+        }
+
+        [Test]
+        public void NoPublicMemberHandsOutAnOwnerContextOrState()
+        {
+            var offenders = new List<string>();
+
+            foreach (var type in RuntimeAssembly.GetExportedTypes())
+            {
+                foreach (var property in type.GetProperties(
+                             BindingFlags.Public | BindingFlags.Instance |
+                             BindingFlags.Static | BindingFlags.DeclaredOnly))
+                {
+                    var returned = property.PropertyType;
+
+                    if (typeof(UnityEngine.Object).IsAssignableFrom(returned))
+                    {
+                        offenders.Add($"{type.FullName}.{property.Name} exposes a Unity object");
+                    }
+
+                    if (returned.IsGenericType &&
+                        returned.GetGenericTypeDefinition() == typeof(FyniteState<>))
+                    {
+                        offenders.Add($"{type.FullName}.{property.Name} exposes a state instance");
+                    }
+                }
+            }
+
+            Assert.That(offenders, Is.Empty);
+        }
+
         [Test]
         public void TheLifecycleInternalsStayInternal()
         {

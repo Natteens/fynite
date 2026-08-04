@@ -391,6 +391,19 @@ caught by a PlayerLoop reset — has none: `ActiveStateCount` is `0` and any ind
 There is no collection behind this. Both members read the path the machine already keeps, so looping
 over it every frame allocates nothing.
 
+## Runtime debugger
+
+Open **Window > Fynite > Debugger** to watch the machines the PlayerLoop is driving. It lists every
+running machine, and shows the owner, the context type and the full active path of the one you pick,
+from the top level state down to the current one.
+
+It works during Play Mode and needs no setup: no component to add, no flag to turn on, nothing to
+register. The window is read only — it watches machines, it never starts, stops or steers them — and
+it asks the loop for what it needs a few times a second rather than being told, so a machine costs
+exactly the same whether the window is open or has never been opened.
+
+The debugger lives in an Editor-only assembly and does not go into a player build.
+
 ## Installation
 
 Install through the Unity Package Manager using a Git URL. Always pin a published tag: a URL without

@@ -3,6 +3,7 @@
   "rootNamespace": "FyniteTests",
   "references": [
     "Fynite",
+    "Fynite.Editor",
     "Fynite.Tests.Shared",
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner"
