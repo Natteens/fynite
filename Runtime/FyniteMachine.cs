@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.ExceptionServices;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -7,10 +8,29 @@ namespace Fynite
     /// <summary>
     /// A running machine. Driven by the Unity PlayerLoop; there is no manual update entry point.
     /// </summary>
-    public sealed class FyniteMachine<TContext> : IDisposable, IFyniteTickable, IFyniteEventSink
-        where TContext : class
+    public sealed class FyniteMachine<TContext> : IDisposable, IFyniteTickable where TContext : class
     {
+        /// <summary>
+        /// Why a machine is stopping. Every reason runs the same steps; it only decides who owns the
+        /// loop registry at that moment, and who gets told when an <c>Exit</c> fails.
+        /// </summary>
+        private enum StopReason
+        {
+            /// <summary>Explicit <c>Dispose</c>. The failing Exit is the caller's to see.</summary>
+            Disposed,
+
+            /// <summary>The owner went away. Nobody is left to catch anything, so failures are logged.</summary>
+            OwnerDestroyed,
+
+            /// <summary>The loop is resetting. It has already emptied its registry.</summary>
+            LoopReset,
+
+            /// <summary>The build never finished. The build's own failure is the one that matters.</summary>
+            LaunchFailed
+        }
+
         private FyniteDefinition<TContext> definition;
+        private FyniteEventInbox inbox;
         private FyniteTimeSource time;
         private TContext context;
         private Object owner;
@@ -24,14 +44,6 @@ namespace Fynite
         private bool inCycle;
         private int loopSlot = FyniteLoop.Unregistered;
 
-        // The sources this machine is subscribed to, one entry per subscription, plus the ring buffer
-        // of the ones that were published and are still waiting for a safe update.
-        private FyniteEvent[] eventSources;
-        private int[] eventQueue;
-        private bool[] eventPending;
-        private int eventHead;
-        private int eventCount;
-
         internal FyniteMachine(Object owner, TContext context, FyniteDefinition<TContext> definition)
         {
             this.owner = owner;
@@ -39,14 +51,11 @@ namespace Fynite
             this.definition = definition;
 
             time = new FyniteTimeSource();
+            inbox = new FyniteEventInbox(definition.EventSources);
 
             var capacity = definition.Hierarchy.PathCapacity;
             activePath = new int[capacity];
             pathBuffer = new int[capacity];
-
-            var sourceCount = definition.EventSources.Length;
-            eventQueue = new int[sourceCount];
-            eventPending = new bool[sourceCount];
 
             ownerBehaviour = owner as Behaviour;
             if (ownerBehaviour != null)
@@ -99,7 +108,9 @@ namespace Fynite
 
         /// <summary>
         /// Runs <c>Exit</c> once on every active state, from the leaf up to the top, unregisters from
-        /// the PlayerLoop and rejects any later use. Safe to call more than once.
+        /// the PlayerLoop and rejects any later use. Safe to call more than once. An <c>Exit</c> that
+        /// throws does not stop the states above it from being left, and the exception still reaches
+        /// the caller.
         /// </summary>
         public void Dispose()
         {
@@ -108,70 +119,101 @@ namespace Fynite
                 return;
             }
 
-            var wasRunning = status == FyniteMachineStatus.Running;
-            status = FyniteMachineStatus.Disposed;
-
-            try
+            var failure = Stop(StopReason.Disposed);
+            if (failure != null)
             {
-                if (wasRunning)
-                {
-                    ExitActivePath();
-                }
-            }
-            finally
-            {
-                FyniteLoop.Unregister(this);
-                Release();
+                ExceptionDispatchInfo.Capture(failure).Throw();
             }
         }
 
-        internal void Launch(int startIndex)
+        /// <summary>
+        /// Starts the machine, or leaves nothing behind. Every step is undone if a later one fails, and
+        /// the machine is only handed to the loop once it is fully entered — and only if the loop is
+        /// still the one the build began in.
+        /// </summary>
+        internal void Launch(int startIndex, int buildGeneration)
         {
             try
             {
-                Subscribe();
+                // A reset during Configure or Compile already invalidated this build; stop before any
+                // Enter runs.
+                RequireCurrentLoop(buildGeneration);
 
-                var states = definition.States;
-                for (var i = 0; i < states.Length; i++)
-                {
-                    states[i].Bind(context, time);
-                }
+                inbox.Open();
+                BindStates();
 
-                for (var i = 0; i < states.Length; i++)
-                {
-                    states[i].BuildActivity(context);
-                }
+                // Binding runs ConfigureActivity, which is user code and could have reset the loop.
+                RequireCurrentLoop(buildGeneration);
 
                 status = FyniteMachineStatus.Running;
-                activeCount = ResolvePath(startIndex, activePath);
+                EnterInitialPath(startIndex);
 
-                for (var i = 0; i < activeCount; i++)
+                // Enter is user code and may itself have reset the loop.
+                if (!FyniteLoop.TryRegister(this, buildGeneration))
                 {
-                    states[activePath[i]].InvokeEnter();
+                    throw StaleBuild();
                 }
             }
             catch
             {
-                status = FyniteMachineStatus.Faulted;
-                Release();
+                AbortLaunch();
                 throw;
             }
-
-            FyniteLoop.Register(this);
         }
 
-        private void Subscribe()
+        private void BindStates()
         {
-            var sources = definition.EventSources;
+            var states = definition.States;
 
-            // Assigned before the loop so a failure halfway through is still undone by Release.
-            eventSources = sources;
-
-            for (var i = 0; i < sources.Length; i++)
+            for (var i = 0; i < states.Length; i++)
             {
-                sources[i].Subscribe(this, i);
+                states[i].Bind(context, time);
+            }
+
+            for (var i = 0; i < states.Length; i++)
+            {
+                states[i].BuildActivity(context);
             }
         }
+
+        private void EnterInitialPath(int startIndex)
+        {
+            var states = definition.States;
+            var count = ResolvePath(startIndex, activePath);
+
+            // The path grows one state at a time so that a failing Enter leaves behind exactly the
+            // states that did enter — every one of which is then given its Exit.
+            for (var i = 0; i < count; i++)
+            {
+                activeCount = i + 1;
+                states[activePath[i]].InvokeEnter();
+            }
+
+            activeCount = count;
+        }
+
+        private void AbortLaunch()
+        {
+            var failure = Stop(StopReason.LaunchFailed);
+            if (failure != null)
+            {
+                // Secondary to whatever made the build fail, which is the exception being propagated.
+                Debug.LogException(failure);
+            }
+        }
+
+        private static void RequireCurrentLoop(int buildGeneration)
+        {
+            if (!FyniteLoop.IsCurrent(buildGeneration))
+            {
+                throw StaleBuild();
+            }
+        }
+
+        private static InvalidOperationException StaleBuild()
+            => new InvalidOperationException(
+                "Fynite: the PlayerLoop was reset while this machine was being built, so the machine " +
+                "was not started.");
 
         internal void Tick(float deltaTime)
         {
@@ -190,9 +232,13 @@ namespace Fynite
                     return;
                 }
 
-                if (!switched && EvaluateTransitions(out var from, out var to) && !Switch(from, to))
+                if (!switched)
                 {
-                    return;
+                    var match = MatchPredicate();
+                    if (match.Found && !Switch(match.From, match.To))
+                    {
+                        return;
+                    }
                 }
 
                 for (var i = 0; i < activeCount; i++)
@@ -255,29 +301,19 @@ namespace Fynite
 
         void IFyniteTickable.LoopFixedUpdate(float fixedDeltaTime) => TickFixed(fixedDeltaTime);
 
-        /// <summary>
-        /// Called by every publication of a source this machine listens to, including from inside a
-        /// callback and while the owner is disabled. It only marks the source as waiting: a source
-        /// already waiting stays a single occurrence, so repeated publications never grow the queue.
-        /// </summary>
-        void IFyniteEventSink.Signal(int slot)
+        void IFyniteTickable.LoopShutdown()
         {
-            var pending = eventPending;
-            if (pending == null || pending[slot])
+            if (status == FyniteMachineStatus.Disposed)
             {
                 return;
             }
 
-            pending[slot] = true;
-
-            var tail = eventHead + eventCount;
-            if (tail >= eventQueue.Length)
+            var failure = Stop(StopReason.LoopReset);
+            if (failure != null)
             {
-                tail -= eventQueue.Length;
+                // Reported, not thrown: the reset still has other machines to end.
+                Debug.LogException(failure);
             }
-
-            eventQueue[tail] = slot;
-            eventCount++;
         }
 
         /// <summary>
@@ -292,14 +328,14 @@ namespace Fynite
 
             // Only what was already waiting is consumed, so anything published from a callback of this
             // very cycle waits for the next one instead of being handled recursively.
-            var budget = eventCount;
+            var budget = inbox.PendingCount;
 
             while (budget > 0)
             {
                 budget--;
 
-                var slot = Dequeue();
-                if (!MatchEvent(slot, out var from, out var to))
+                var match = MatchEvent(inbox.Dequeue());
+                if (!match.Found)
                 {
                     // An event nobody is listening for in the active path is an occurrence that passed:
                     // it is spent here rather than kept waiting for some later state.
@@ -307,78 +343,54 @@ namespace Fynite
                 }
 
                 switched = true;
-                return Switch(from, to);
+                return Switch(match.From, match.To);
             }
 
             return true;
         }
 
-        private int Dequeue()
+        private FyniteMatch MatchEvent(int source)
         {
-            var slot = eventQueue[eventHead];
+            var events = definition.Events;
 
-            eventHead++;
-            if (eventHead == eventQueue.Length)
+            var match = events.MatchGlobal(source);
+            if (match.Found)
             {
-                eventHead = 0;
-            }
-
-            eventCount--;
-            eventPending[slot] = false;
-            return slot;
-        }
-
-        private bool MatchEvent(int slot, out int from, out int to)
-        {
-            var global = definition.GlobalEvents;
-            if (Match(global, 0, global.Length, slot, out from, out to))
-            {
-                return true;
+                return match;
             }
 
             for (var i = activeCount - 1; i >= 0; i--)
             {
-                var state = activePath[i];
-                var start = definition.LocalEventStart[state];
-
-                if (Match(
-                        definition.LocalEvents,
-                        start,
-                        start + definition.LocalEventCount[state],
-                        slot,
-                        out from,
-                        out to))
+                match = events.MatchLocal(source, activePath[i]);
+                if (match.Found)
                 {
-                    return true;
+                    return match;
                 }
             }
 
-            return false;
+            return FyniteMatch.None;
         }
 
-        private static bool Match(
-            FyniteEventRecord[] records,
-            int start,
-            int end,
-            int slot,
-            out int from,
-            out int to)
+        private FyniteMatch MatchPredicate()
         {
-            for (var i = start; i < end; i++)
-            {
-                if (records[i].Source != slot)
-                {
-                    continue;
-                }
+            var predicates = definition.Predicates;
 
-                from = records[i].From;
-                to = records[i].To;
-                return true;
+            var match = predicates.MatchGlobal(context);
+            if (match.Found)
+            {
+                return match;
             }
 
-            from = FyniteTransitions<TContext>.AnyState;
-            to = FyniteTransitions<TContext>.AnyState;
-            return false;
+            for (var i = activeCount - 1; i >= 0; i--)
+            {
+                match = predicates.MatchLocal(context, activePath[i]);
+                if (match.Found)
+                {
+                    return match;
+                }
+            }
+
+            return FyniteMatch.None;
         }
 
         private bool CanTick()
@@ -472,61 +484,81 @@ namespace Fynite
             return true;
         }
 
-        private bool EvaluateTransitions(out int from, out int to)
+        /// <summary>
+        /// The one way a machine stops. Leaves the active path leaf first — which cancels each activity
+        /// before its <c>Exit</c> — then drops every subscription and lets go of everything it held.
+        /// Returns the first <c>Exit</c> failure, or null.
+        /// </summary>
+        private Exception Stop(StopReason reason)
         {
-            if (Evaluate(definition.Global, 0, definition.Global.Length, out from, out to))
+            status = reason == StopReason.LaunchFailed
+                ? FyniteMachineStatus.Faulted
+                : FyniteMachineStatus.Disposed;
+
+            Exception failure;
+
+            try
             {
-                return true;
+                failure = ExitEnteredStates();
             }
-
-            for (var i = activeCount - 1; i >= 0; i--)
+            finally
             {
-                var state = activePath[i];
-                var start = definition.LocalStart[state];
-
-                if (Evaluate(definition.Local, start, start + definition.LocalCount[state], out from, out to))
+                // A loop reset has already emptied its registry; reaching into it from here would
+                // fight the sweep that is running.
+                if (reason != StopReason.LoopReset)
                 {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private bool Evaluate(
-            FyniteTransitionRecord<TContext>[] records,
-            int start,
-            int end,
-            out int from,
-            out int to)
-        {
-            for (var i = start; i < end; i++)
-            {
-                if (!records[i].Predicate.Evaluate(context))
-                {
-                    continue;
+                    FyniteLoop.Unregister(this);
                 }
 
-                from = records[i].From;
-                to = records[i].To;
-                return true;
+                Release();
             }
 
-            from = FyniteTransitions<TContext>.AnyState;
-            to = FyniteTransitions<TContext>.AnyState;
-            return false;
+            return failure;
         }
 
-        private void ExitActivePath()
+        /// <summary>
+        /// Leaves every state that was entered, leaf first. A failing <c>Exit</c> never costs the
+        /// states above it their own: the first failure is returned for the caller to report or
+        /// rethrow, and any later one is logged so it is not lost behind it.
+        /// </summary>
+        private Exception ExitEnteredStates()
         {
+            if (definition == null)
+            {
+                return null;
+            }
+
             var states = definition.States;
+            Exception first = null;
+
             while (activeCount > 0)
             {
                 activeCount--;
-                states[activePath[activeCount]].InvokeExit();
+
+                try
+                {
+                    states[activePath[activeCount]].InvokeExit();
+                }
+                catch (Exception exception)
+                {
+                    if (first == null)
+                    {
+                        first = exception;
+                    }
+                    else
+                    {
+                        Debug.LogException(exception);
+                    }
+                }
             }
+
+            return first;
         }
 
+        /// <summary>
+        /// Stops without leaving the active path. A machine that threw is in an unknown state, so
+        /// running more of its code is not safe; it is reported and released instead.
+        /// </summary>
         private void Fault(Exception exception)
         {
             if (status == FyniteMachineStatus.Running)
@@ -541,34 +573,16 @@ namespace Fynite
 
         private void DisposeDetachedOwner()
         {
-            status = FyniteMachineStatus.Disposed;
-
-            try
+            var failure = Stop(StopReason.OwnerDestroyed);
+            if (failure != null)
             {
-                ExitActivePath();
-            }
-            catch (Exception exception)
-            {
-                Debug.LogException(exception);
-            }
-            finally
-            {
-                FyniteLoop.Unregister(this);
-                Release();
+                Debug.LogException(failure);
             }
         }
 
         private void Release()
         {
-            if (eventSources != null)
-            {
-                for (var i = 0; i < eventSources.Length; i++)
-                {
-                    eventSources[i].Unsubscribe(this);
-                }
-
-                eventSources = null;
-            }
+            inbox?.Close();
 
             if (definition != null)
             {
@@ -582,10 +596,7 @@ namespace Fynite
             activeCount = 0;
             activePath = null;
             pathBuffer = null;
-            eventQueue = null;
-            eventPending = null;
-            eventHead = 0;
-            eventCount = 0;
+            inbox = null;
             definition = null;
             context = null;
             time = null;

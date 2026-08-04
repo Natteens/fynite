@@ -281,6 +281,14 @@ Destroying the owner runs `Exit` and unregisters the machine, so controllers do 
 `Exit`; re-enabling it resumes from the same place. Call `Dispose()` only to shut a machine down
 before its owner goes away — it is idempotent and runs `Exit` exactly once.
 
+Leaving play mode, or anything that rebuilds the PlayerLoop, ends every machine that was still
+running: each one runs `Exit` once, from the leaf up, cancels its activity, drops its event
+subscriptions and lets go of its context and owner. Nothing survives into the next session, so with
+Domain Reload turned off a second Enter Play Mode starts as clean as the first, and a `FyniteEvent`
+held by a long-lived object never keeps a dead machine alive. While that is happening, `Build()`
+refuses to start a machine that would have nowhere to live — it throws instead of half-creating one.
+None of this needs anything from you: it is what the loop does on its own between sessions.
+
 Keeping a reference is still useful for `IsRunning`, `CurrentStateType` and `IsIn<TState>()`.
 
 ## Transition order

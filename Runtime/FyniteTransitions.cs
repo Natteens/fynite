@@ -192,15 +192,9 @@ namespace Fynite
                 states.ToArray(),
                 types,
                 layout,
-                global,
-                local,
-                localStart,
-                localCount,
-                sources,
-                globalEvents,
-                localEvents,
-                localEventStart,
-                localEventCount);
+                new FynitePredicateTable<TContext>(global, local, localStart, localCount),
+                new FyniteEventTable(globalEvents, localEvents, localEventStart, localEventCount),
+                sources);
         }
 
         /// <summary>

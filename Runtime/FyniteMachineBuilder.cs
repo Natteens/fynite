@@ -108,6 +108,10 @@ namespace Fynite
 
             built = true;
 
+            // Taken before anything is configured or resolved, so a Build attempted while the loop is
+            // shutting down fails without creating a state, a subscription or an activity.
+            var buildGeneration = FyniteLoop.BeginBuild();
+
             for (var i = 0; i < modules.Count; i++)
             {
                 modules[i].Configure(transitions);
@@ -125,7 +129,7 @@ namespace Fynite
             }
 
             var machine = new FyniteMachine<TContext>(owner, context, definition);
-            machine.Launch(startIndex);
+            machine.Launch(startIndex, buildGeneration);
             return machine;
         }
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -11,30 +12,72 @@ namespace Fynite
         private static readonly List<IFyniteTickable> machines = new List<IFyniteTickable>(16);
         private static readonly List<IFyniteTickable> pending = new List<IFyniteTickable>(4);
 
+        /// <summary>What a reset has to end. Filled once, when the reset starts.</summary>
+        private static readonly List<IFyniteTickable> snapshotBuffer = new List<IFyniteTickable>(16);
+
+        private static FyniteLoopPhase phase = FyniteLoopPhase.Idle;
+        private static bool clearRequested;
         private static int liveCount;
-        private static bool ticking;
         private static bool needsCompaction;
+
+        /// <summary>
+        /// Bumped the moment a reset is asked for. A build carries the value it started with, so a
+        /// build the reset ran through is recognised and refused instead of registering into a loop
+        /// that has already moved on.
+        /// </summary>
+        private static int generation;
 
         internal static int Count => liveCount;
 
-        internal static void Register(IFyniteTickable machine)
+        /// <summary>
+        /// Opens a build and hands back the generation it belongs to. Refuses outright while the loop
+        /// is shutting down, which is what makes a <c>Build()</c> from inside an <c>Exit</c> fail at
+        /// the very first step instead of half-creating a machine nothing will ever own.
+        /// </summary>
+        internal static int BeginBuild()
         {
+            if (phase == FyniteLoopPhase.ShuttingDown || clearRequested)
+            {
+                throw new InvalidOperationException(
+                    "Fynite: a machine cannot be built while the PlayerLoop is shutting down. " +
+                    "Building from a state's Exit during a reset is not supported.");
+            }
+
+            return generation;
+        }
+
+        /// <summary>True while <paramref name="buildGeneration"/> still describes the current loop.</summary>
+        internal static bool IsCurrent(int buildGeneration)
+            => phase != FyniteLoopPhase.ShuttingDown && buildGeneration == generation;
+
+        /// <summary>
+        /// Adds a finished machine to the loop, unless a reset happened while it was being built. A
+        /// refused machine is the caller's to unwind: it was never registered, so nothing here holds it.
+        /// </summary>
+        internal static bool TryRegister(IFyniteTickable machine, int buildGeneration)
+        {
+            if (!IsCurrent(buildGeneration))
+            {
+                return false;
+            }
+
             if (machine.LoopSlot != Unregistered)
             {
-                return;
+                return true;
             }
 
             liveCount++;
 
-            if (ticking)
+            if (phase == FyniteLoopPhase.Ticking)
             {
                 machine.LoopSlot = Pending;
                 pending.Add(machine);
-                return;
+                return true;
             }
 
             machine.LoopSlot = machines.Count;
             machines.Add(machine);
+            return true;
         }
 
         internal static void Unregister(IFyniteTickable machine)
@@ -65,7 +108,108 @@ namespace Fynite
             }
         }
 
+        /// <summary>
+        /// Empties the loop and ends every machine still in it, so a subsystem reset, a rebuilt
+        /// PlayerLoop or leaving play mode leaves nothing running and no event source holding a dead
+        /// subscriber. Asked for from inside a tick, it lets the current callback finish first.
+        /// </summary>
         internal static void Clear()
+        {
+            switch (phase)
+            {
+                case FyniteLoopPhase.ShuttingDown:
+                    // Already resetting. The sweep in progress covers everything, and asking again
+                    // must not start a second one.
+                    return;
+
+                case FyniteLoopPhase.Ticking:
+                    if (!clearRequested)
+                    {
+                        // Invalidated now, not when the sweep runs, so a build that a callback is in
+                        // the middle of is already stale by the time it tries to register.
+                        generation++;
+                        clearRequested = true;
+                    }
+
+                    return;
+
+                default:
+                    generation++;
+                    PerformClear();
+                    return;
+            }
+        }
+
+        /// <summary>
+        /// Snapshot, drop the registry, end the snapshot. Nothing can be added while this runs, so the
+        /// snapshot is complete by construction and there is nothing to re-sweep.
+        /// </summary>
+        private static void PerformClear()
+        {
+            phase = FyniteLoopPhase.ShuttingDown;
+
+            try
+            {
+                Snapshot();
+                DropRegistry();
+
+                for (var i = 0; i < snapshotBuffer.Count; i++)
+                {
+                    snapshotBuffer[i].LoopShutdown();
+                }
+            }
+            finally
+            {
+                snapshotBuffer.Clear();
+                DropRegistry();
+                phase = FyniteLoopPhase.Idle;
+            }
+        }
+
+        /// <summary>
+        /// Copies what is registered, by instance identity, so a machine is never ended twice even if
+        /// an inconsistency put it in both lists.
+        /// </summary>
+        private static void Snapshot()
+        {
+            snapshotBuffer.Clear();
+
+            Snapshot(machines);
+            Snapshot(pending);
+        }
+
+        private static void Snapshot(List<IFyniteTickable> source)
+        {
+            for (var i = 0; i < source.Count; i++)
+            {
+                var machine = source[i];
+                if (machine == null || InSnapshot(machine))
+                {
+                    continue;
+                }
+
+                snapshotBuffer.Add(machine);
+            }
+        }
+
+        private static bool InSnapshot(IFyniteTickable machine)
+        {
+            for (var i = 0; i < snapshotBuffer.Count; i++)
+            {
+                if (ReferenceEquals(snapshotBuffer[i], machine))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Forgets every registration without ending anything. Leaves the phase alone: only the method
+        /// that owns the phase changes it.
+        /// </summary>
+        private static void DropRegistry()
         {
             for (var i = 0; i < machines.Count; i++)
             {
@@ -83,7 +227,6 @@ namespace Fynite
             machines.Clear();
             pending.Clear();
             liveCount = 0;
-            ticking = false;
             needsCompaction = false;
         }
 
@@ -111,17 +254,25 @@ namespace Fynite
 
         internal static void Tick(float delta, bool fixedStep)
         {
-            if (ticking)
+            if (phase != FyniteLoopPhase.Idle)
             {
+                // A tick from inside a tick, or from inside a reset, is not a second frame.
                 return;
             }
 
-            ticking = true;
+            phase = FyniteLoopPhase.Ticking;
 
             try
             {
                 for (var i = 0; i < machines.Count; i++)
                 {
+                    if (clearRequested)
+                    {
+                        // The callback that asked for the reset has finished. Nothing else is updated
+                        // in a loop that is about to be torn down.
+                        break;
+                    }
+
                     var machine = machines[i];
                     if (machine == null)
                     {
@@ -140,8 +291,19 @@ namespace Fynite
             }
             finally
             {
-                ticking = false;
-                Flush();
+                phase = FyniteLoopPhase.Idle;
+
+                if (clearRequested)
+                {
+                    // The reset rebuilds the registry itself, including whatever was still pending, so
+                    // the ordinary flush is skipped.
+                    clearRequested = false;
+                    PerformClear();
+                }
+                else
+                {
+                    Flush();
+                }
             }
         }
 

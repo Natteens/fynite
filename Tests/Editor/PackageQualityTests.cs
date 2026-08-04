@@ -48,6 +48,26 @@ namespace FyniteTests
             AssertRuntimeFree("branch =>");
         }
 
+        /// <summary>
+        /// The loop reset is bounded by what is registered when it starts, never by a number someone
+        /// picked. Anything below would be a machine allowed to escape a reset.
+        /// </summary>
+        [Test]
+        public void RuntimeResetHasNoArbitraryLimitOrBacklog()
+        {
+            AssertRuntimeFree("Shutdown" + "Passes");
+            AssertRuntimeFree("Runaway" + "ShutdownLimit");
+            AssertRuntimeFree("Force" + "Shutdown");
+            AssertRuntimeFree("closing");
+            AssertRuntimeFree("Closing");
+        }
+
+        [Test]
+        public void RuntimeDoesNotUseLinq()
+        {
+            AssertRuntimeFree("System." + "Linq");
+        }
+
         [Test]
         public void PackageHasNoGraphToolkitReferences()
         {

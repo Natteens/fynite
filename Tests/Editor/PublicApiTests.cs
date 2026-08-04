@@ -350,6 +350,105 @@ namespace FyniteTests
         }
 
         [Test]
+        public void TheMachineHasNoPublicShutdownOrResetApi()
+        {
+            var forbidden = new[]
+            {
+                "LoopShutdown", "Shutdown", "Reset", "Stop", "Restart", "Status", "Fault",
+                "LoopUpdate", "LoopFixedUpdate", "LoopSlot"
+            };
+
+            var offenders = typeof(FyniteMachine<ProbeContext>)
+                .GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
+                .Select(member => member.Name)
+                .Where(name => Array.IndexOf(forbidden, name) >= 0)
+                .ToArray();
+
+            Assert.That(offenders, Is.Empty);
+        }
+
+        [Test]
+        public void TheMachineStillExposesOnlyWhatItAlwaysDid()
+        {
+            var members = typeof(FyniteMachine<ProbeContext>)
+                .GetMembers(BindingFlags.Public | BindingFlags.Instance |
+                            BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Select(member => member.Name)
+                .Distinct()
+                .ToArray();
+
+            Assert.That(
+                members,
+                Is.EquivalentTo(new[]
+                {
+                    "IsRunning", "get_IsRunning",
+                    "CurrentStateType", "get_CurrentStateType",
+                    "IsIn",
+                    "Dispose"
+                }));
+        }
+
+        [Test]
+        public void TheLifecycleInternalsStayInternal()
+        {
+            var internals = new[]
+            {
+                "Fynite.FyniteLoop",
+                "Fynite.FyniteLoopPhase",
+                "Fynite.FyniteEventInbox",
+                "Fynite.FyniteEventTable",
+                "Fynite.FynitePredicateTable`1",
+                "Fynite.FyniteMatch",
+                "Fynite.FyniteDefinition`1",
+                "Fynite.FyniteMachineStatus"
+            };
+
+            foreach (var name in internals)
+            {
+                var type = RuntimeAssembly.GetType(name, false);
+
+                Assert.That(type, Is.Not.Null, $"{name} is missing");
+                Assert.That(type.IsVisible, Is.False, $"{name} became part of the public API");
+            }
+        }
+
+        [Test]
+        public void NoPublicMemberLeaksTheLifecycleVocabulary()
+        {
+            var forbidden = new[]
+            {
+                "Generation", "Epoch", "LoopPhase", "Phase", "ShutdownReason",
+                "ActivityProgram", "EventInbox", "ActivePath", "DefinitionTable", "BeginBuild"
+            };
+
+            var offenders = new List<string>();
+
+            foreach (var type in RuntimeAssembly.GetExportedTypes())
+            {
+                foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance |
+                                                       BindingFlags.Static | BindingFlags.DeclaredOnly))
+                {
+                    if (Array.IndexOf(forbidden, member.Name) >= 0)
+                    {
+                        offenders.Add($"{type.FullName}.{member.Name}");
+                    }
+                }
+            }
+
+            Assert.That(offenders, Is.Empty);
+        }
+
+        [Test]
+        public void TheTickableContractStaysInternal()
+        {
+            var tickable = RuntimeAssembly.GetType("Fynite.IFyniteTickable", false);
+
+            Assert.That(tickable, Is.Not.Null);
+            Assert.That(tickable.IsPublic, Is.False, "IFyniteTickable must not be exported");
+            Assert.That(tickable.GetMethod("LoopShutdown"), Is.Not.Null, "the shutdown hook is missing");
+        }
+
+        [Test]
         public void ThereAreNoPredicateCombinators()
         {
             var forbidden = new[] { "WhenAll", "WhenAny", "WhenNot", "Unless", "And", "Or", "Not" };
