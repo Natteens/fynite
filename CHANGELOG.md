@@ -1,3 +1,10 @@
+# [0.14.0](https://github.com/Natteens/fynite/compare/v0.13.0...v0.14.0) (2026-08-04)
+
+
+### Features
+
+* Add editor debugger for running Fynite machines ([30dc858](https://github.com/Natteens/fynite/commit/30dc858d064325f892900d597a281a52cb256b5c))
+
 # [0.13.0](https://github.com/Natteens/fynite/compare/v0.12.1...v0.13.0) (2026-08-04)
 
 

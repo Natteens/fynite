@@ -1,6 +1,6 @@
 {
   "name": "com.natteens.fynite",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "displayName": "Fynite",
   "description": "A code-first, type-safe state machine for Unity, driven automatically by the PlayerLoop.",
   "keywords": [
