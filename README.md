@@ -366,12 +366,12 @@ Install through the Unity Package Manager using a Git URL. Always pin a publishe
 release and still contain different code.
 
 <!-- fynite-release:start -->
-The latest published release is **v0.11.0**.
+The latest published release is **v0.12.0**.
 
 In the Unity Package Manager, choose *Add package from git URL* and paste:
 
 ```
-https://github.com/Natteens/fynite.git#v0.11.0
+https://github.com/Natteens/fynite.git#v0.12.0
 ```
 
 Or declare the dependency in `Packages/manifest.json`:
@@ -379,7 +379,7 @@ Or declare the dependency in `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.natteens.fynite": "https://github.com/Natteens/fynite.git#v0.11.0"
+    "com.natteens.fynite": "https://github.com/Natteens/fynite.git#v0.12.0"
   }
 }
 ```

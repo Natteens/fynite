@@ -1,3 +1,10 @@
+# [0.12.0](https://github.com/Natteens/fynite/compare/v0.11.0...v0.12.0) (2026-08-04)
+
+
+### Features
+
+* Add transition shorthand APIs and tests ([9ee1992](https://github.com/Natteens/fynite/commit/9ee1992958628289dbe120610e8930977f96eecd))
+
 # [0.11.0](https://github.com/Natteens/fynite/compare/v0.10.0...v0.11.0) (2026-08-04)
 
 
