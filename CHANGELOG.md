@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/Natteens/fynite/compare/v0.9.0...v0.10.0) (2026-08-04)
+
+
+### Features
+
+* Add event-driven transitions to Fynite ([ac9a0c0](https://github.com/Natteens/fynite/commit/ac9a0c09f6590f2cf27226de835a90d56a635ea7))
+
 # [0.9.0](https://github.com/Natteens/fynite/compare/v0.8.0...v0.9.0) (2026-08-03)
 
 
