@@ -99,12 +99,18 @@ public sealed class LocomotionTransitions : IFyniteTransitions<PlayerContext>
     {
         transitions
             .From<IdleState, WalkState>()
-            .When<HasMovement>();
+            .When(HasMovement);
 
         transitions
             .From<WalkState, IdleState>()
-            .When(context => !context.Input.HasMovement);
+            .When(HasNoMovement);
     }
+
+    private static bool HasMovement(PlayerContext context)
+        => context.Input.HasMovement;
+
+    private static bool HasNoMovement(PlayerContext context)
+        => !HasMovement(context);
 }
 ```
 
@@ -116,13 +122,13 @@ from the Package Manager, under the *Samples* tab.
 
 ## Documentation
 
-- [Getting started](./docs/getting-started.md) — context, states, predicates and transition modules
-- [Events](./docs/events.md) — occurrences that predicates cannot express
-- [Activities](./docs/activities.md) — what a state does over time
-- [Hierarchy](./docs/hierarchy.md) — nested states and reading the active path
-- [Execution](./docs/execution.md) — PlayerLoop, transition order, shutdown and faults
-- [Debugger](./docs/debugger.md) — the Editor window
-- [API reference](./docs/api.md) — the public surface in one page
+- [Getting started](./Documentation~/getting-started.md) — context, states, predicates and transition modules
+- [Events](./Documentation~/events.md) — occurrences that predicates cannot express
+- [Activities](./Documentation~/activities.md) — what a state does over time
+- [Hierarchy](./Documentation~/hierarchy.md) — nested states and reading the active path
+- [Execution](./Documentation~/execution.md) — PlayerLoop, transition order, shutdown and faults
+- [Debugger](./Documentation~/debugger.md) — the Editor window
+- [API reference](./Documentation~/api.md) — the public surface in one page
 - [Sample walkthrough](./Samples~/CodeFirst/README.md) · [Changelog](./CHANGELOG.md)
 
 ## License

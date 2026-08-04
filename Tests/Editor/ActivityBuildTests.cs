@@ -163,12 +163,12 @@ namespace FyniteTests
         {
             var builder = new FyniteActivityBuilder<ProbeContext>(typeof(IdleProbe));
 
-            Assert.That(builder.HasDrafts, Is.False);
+            Assert.That(Internals.DraftsOf(builder), Is.Null);
             Assert.That(builder.Compile(Context), Is.Null);
 
             builder.Do(context => context.Mark("Begin"));
 
-            Assert.That(builder.HasDrafts, Is.True);
+            Assert.That(Internals.DraftsOf(builder), Is.Not.Null);
             Assert.That(builder.Compile(Context), Is.Not.Null);
         }
 

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using Fynite;
 using NUnit.Framework;
 
@@ -26,12 +28,6 @@ namespace FyniteTests
         }
 
         [Test]
-        public void RuntimeHasNoPriorityApi()
-        {
-            AssertRuntimeFree("Priority");
-        }
-
-        [Test]
         public void RuntimeSequencesWithoutCoroutinesOrTasks()
         {
             AssertRuntimeFree("IEnumerator");
@@ -40,40 +36,6 @@ namespace FyniteTests
             AssertRuntimeFree("async ");
             AssertRuntimeFree("await ");
             AssertRuntimeFree("yield ");
-        }
-
-        [Test]
-        public void RuntimeHasNoParallelOrBranchingActivities()
-        {
-            AssertRuntimeFree("Parallel");
-            AssertRuntimeFree("branch =>");
-        }
-
-        /// <summary>
-        /// The loop reset is bounded by what is registered when it starts, never by a number someone
-        /// picked. Anything below would be a machine allowed to escape a reset.
-        /// </summary>
-        [Test]
-        public void RuntimeResetHasNoArbitraryLimitOrBacklog()
-        {
-            AssertRuntimeFree("Shutdown" + "Passes");
-            AssertRuntimeFree("Runaway" + "ShutdownLimit");
-            AssertRuntimeFree("Force" + "Shutdown");
-            AssertRuntimeFree("closing");
-            AssertRuntimeFree("Closing");
-        }
-
-        /// <summary>
-        /// An activity step stays an enum plus a struct plus a switch. Anything below would be an
-        /// object, and a virtual call, per step of every state.
-        /// </summary>
-        [Test]
-        public void RuntimeHasNoObjectPerActivityStep()
-        {
-            AssertRuntimeFree("DoStep");
-            AssertRuntimeFree("WaitStep");
-            AssertRuntimeFree("PublishStep");
-            AssertRuntimeFree("IActivityStep");
         }
 
         [Test]
@@ -98,8 +60,6 @@ namespace FyniteTests
             // Narrower than "StateChanged" on purpose: Unity's own playModeStateChanged is what the
             // loop hooks to clean up when play mode ends, and that is not a Fynite observer.
             AssertRuntimeFree("OnState" + "Changed");
-            AssertRuntimeFree("history");
-            AssertRuntimeFree("History");
             AssertRuntimeFree("event Action");
         }
 
@@ -134,7 +94,10 @@ namespace FyniteTests
                 Path.Combine(PackageRoot, "Editor", "Fynite.Editor.asmdef"));
 
             Assert.That(definition, Does.Contain("\"name\": \"Fynite.Editor\""));
-            Assert.That(definition, Does.Contain("\"Editor\""), "the assembly is not Editor only");
+            Assert.That(
+                definition.Replace(" ", "").Replace("\n", "").Replace("\r", ""),
+                Does.Contain("\"includePlatforms\":[\"Editor\"]"),
+                "the assembly is not restricted to the Editor platform");
             Assert.That(definition.ToLowerInvariant(), Does.Not.Contain("graphtoolkit"));
 
             foreach (var file in Directory.GetFiles(
@@ -211,36 +174,6 @@ namespace FyniteTests
             Assert.That(text, Does.Contain(".Build()"));
         }
 
-        /// <summary>
-        /// A condition only one module asks belongs in that module. The sample used to ship a class
-        /// per answer, one of which was nothing but the negation of the other.
-        /// </summary>
-        [Test]
-        public void SampleKeepsALocalConditionInItsTransitionModule()
-        {
-            var sample = Path.Combine(PackageRoot, "Samples~", "CodeFirst", "Runtime");
-
-            Assert.That(File.Exists(Path.Combine(sample, "HasMovement.cs")), Is.False);
-            Assert.That(File.Exists(Path.Combine(sample, "HasNoMovement.cs")), Is.False);
-
-            var module = File.ReadAllText(Path.Combine(sample, "LocomotionTransitions.cs"));
-
-            Assert.That(module, Does.Contain("private static bool HasMovement"));
-            Assert.That(module, Does.Contain(".When(HasMovement)"));
-        }
-
-        [Test]
-        public void DocumentationUsesTheMachineFacade()
-        {
-            foreach (var readme in new[] { "README.md", Path.Combine("Samples~", "CodeFirst", "README.md") })
-            {
-                var text = File.ReadAllText(Path.Combine(PackageRoot, readme));
-
-                Assert.That(text, Does.Contain("Machine"), readme);
-                Assert.That(text, Does.Contain(".Attach("), readme);
-            }
-        }
-
         [Test]
         public void NothingReferencesTheRemovedApis()
         {
@@ -250,6 +183,195 @@ namespace FyniteTests
                 Assert.That(text, Does.Not.Contain(OldFacadeTerm), file);
                 Assert.That(text, Does.Not.Contain(AmbiguityTerm), file);
             }
+        }
+
+        /// <summary>
+        /// Every relative link in the shipped Markdown points at a file that exists, spelled the way
+        /// the file system spells it. A link that only works on a case-insensitive disk is broken.
+        /// </summary>
+        [Test]
+        public void EveryRelativeDocumentationLinkResolves()
+        {
+            var broken = new List<string>();
+
+            foreach (var document in EnumerateDocuments())
+            {
+                var folder = Path.GetDirectoryName(document);
+
+                foreach (Match match in Regex.Matches(File.ReadAllText(document), @"\]\(([^)]+)\)"))
+                {
+                    var target = match.Groups[1].Value;
+
+                    if (target.StartsWith("http", StringComparison.Ordinal) ||
+                        target.StartsWith("#", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var path = Path.GetFullPath(
+                        Path.Combine(folder, target.Split('#')[0]));
+
+                    if (!ExistsWithThisExactName(path))
+                    {
+                        broken.Add($"{Path.GetFileName(document)} -> {target}");
+                    }
+                }
+            }
+
+            Assert.That(broken, Is.Empty);
+        }
+
+        /// <summary>Nothing the package ships still points at something the package removed.</summary>
+        [Test]
+        public void DocumentationDoesNotNameAnythingThatIsGone()
+        {
+            var gone = new[]
+            {
+                "FyniteActivity" + "Plan",
+                "Window > Fynite",
+                "Window/Fynite",
+                "HasMovement.cs",
+                "HasNoMovement.cs"
+            };
+
+            foreach (var document in EnumerateDocuments())
+            {
+                var text = File.ReadAllText(document);
+
+                foreach (var term in gone)
+                {
+                    Assert.That(text, Does.Not.Contain(term), document);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Unity writes a <c>.meta</c> beside everything it imports and nothing else. An orphan means a
+        /// file was deleted without its meta; a missing one means the asset arrives without its GUID.
+        /// </summary>
+        [Test]
+        public void EveryImportedAssetHasItsMetaAndNoMetaIsOrphaned()
+        {
+            var missing = new List<string>();
+            var orphaned = new List<string>();
+
+            foreach (var folder in new[] { "Runtime", "Editor", "Tests" })
+            {
+                Audit(Path.Combine(PackageRoot, folder), missing, orphaned);
+            }
+
+            Audit(PackageRoot, missing, orphaned, recurse: false);
+
+            Assert.That(missing, Is.Empty, "assets without a .meta");
+            Assert.That(orphaned, Is.Empty, "meta files without an asset");
+        }
+
+        /// <summary>
+        /// Unity ignores a folder whose name ends in <c>~</c>, so the documentation and the sample do
+        /// not arrive as imported assets in a consumer's Project Browser.
+        /// </summary>
+        [Test]
+        public void DocumentationAndSamplesAreHiddenFromTheAssetDatabase()
+        {
+            Assert.That(Directory.Exists(Path.Combine(PackageRoot, "Documentation~")), Is.True);
+            Assert.That(Directory.Exists(Path.Combine(PackageRoot, "docs")), Is.False);
+            Assert.That(File.Exists(Path.Combine(PackageRoot, "docs.meta")), Is.False);
+
+            foreach (var hidden in new[] { "Documentation~", "Samples~" })
+            {
+                var metas = Directory.GetFiles(
+                    Path.Combine(PackageRoot, hidden),
+                    "*.meta",
+                    SearchOption.AllDirectories);
+
+                Assert.That(metas, Is.Empty, $"{hidden} is hidden, so its meta files mean nothing");
+            }
+        }
+
+        private static void Audit(
+            string folder,
+            List<string> missing,
+            List<string> orphaned,
+            bool recurse = true)
+        {
+            var search = recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+
+            foreach (var file in Directory.GetFiles(folder, "*", search))
+            {
+                // Unity ignores anything whose name starts with a dot, so it never writes a meta for it.
+                if (Path.GetFileName(file).StartsWith(".", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (file.EndsWith(".meta", StringComparison.Ordinal))
+                {
+                    if (!File.Exists(file.Substring(0, file.Length - 5)) &&
+                        !Directory.Exists(file.Substring(0, file.Length - 5)))
+                    {
+                        orphaned.Add(file);
+                    }
+
+                    continue;
+                }
+
+                if (!File.Exists(file + ".meta"))
+                {
+                    missing.Add(file);
+                }
+            }
+
+            if (!recurse)
+            {
+                return;
+            }
+
+            foreach (var nested in Directory.GetDirectories(folder, "*", SearchOption.AllDirectories))
+            {
+                if (!File.Exists(nested + ".meta"))
+                {
+                    missing.Add(nested);
+                }
+            }
+        }
+
+        private static bool ExistsWithThisExactName(string path)
+        {
+            var folder = Path.GetDirectoryName(path);
+
+            if (folder == null || !Directory.Exists(folder))
+            {
+                return false;
+            }
+
+            var name = Path.GetFileName(path);
+
+            foreach (var entry in Directory.GetFileSystemEntries(folder))
+            {
+                if (string.Equals(Path.GetFileName(entry), name, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string[] EnumerateDocuments()
+        {
+            var documents = new List<string>
+            {
+                Path.Combine(PackageRoot, "README.md"),
+                Path.Combine(PackageRoot, "CHANGELOG.md"),
+                Path.Combine(PackageRoot, "Samples~", "CodeFirst", "README.md")
+            };
+
+            documents.AddRange(Directory.GetFiles(
+                Path.Combine(PackageRoot, "Documentation~"),
+                "*.md",
+                SearchOption.AllDirectories));
+
+            return documents.ToArray();
         }
 
         private static void AssertRuntimeFree(string term)

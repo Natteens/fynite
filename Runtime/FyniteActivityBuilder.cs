@@ -17,9 +17,6 @@ namespace Fynite
 
         internal FyniteActivityBuilder(Type state) => this.state = state;
 
-        /// <summary>Whether any step was declared. Exists for the tests of the package.</summary>
-        internal bool HasDrafts => drafts != null;
-
         /// <summary>
         /// Runs <paramref name="action"/> once, the moment the chain reaches this step, and moves on
         /// in the same tick.

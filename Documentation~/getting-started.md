@@ -24,23 +24,29 @@ public sealed class WalkState : FyniteState<PlayerContext>
 
 A state knows nothing about the machine or about the other states, which keeps it reusable.
 
-A **predicate** answers one question and changes nothing. Implement `IPredicate<TContext>` when the
-condition deserves a name:
-
-```csharp
-public sealed class HasMovement : IPredicate<PlayerContext>
-{
-    public bool Evaluate(PlayerContext context) => context.Input.HasMovement;
-}
-```
-
-Pass a lambda to `When` when it does not deserve one, and combine conditions with plain C#:
+A **predicate** answers one question and changes nothing. A condition only one module asks stays in
+that module, as a lambda or a private method, and reads as the rule it is:
 
 ```csharp
 transitions
     .From<IdleState, WalkState>()
-    .When(context => context.Input.HasMovement && context.Movement.IsGrounded);
+    .When(HasMovement);
+
+private static bool HasMovement(PlayerContext context)
+    => context.Input.HasMovement;
 ```
+
+Implement `IPredicate<TContext>` when the rule is reused across modules, or is important enough to
+deserve a name and a file of its own:
+
+```csharp
+public sealed class IsDead : IPredicate<PlayerContext>
+{
+    public bool Evaluate(PlayerContext context) => context.Health.Current <= 0;
+}
+```
+
+Either way conditions combine with plain C#, so `&&` and `!` are all the composition there is.
 
 A **transition module** implements `IFyniteTransitions<TContext>` and groups related rules by
 subject. Registering several with `Use<T>()` composes a machine from locomotion, combat or damage
@@ -58,7 +64,7 @@ same transition, and is worth reaching for when the two states deserve their own
 transitions
     .From<IdleState>()
     .To<WalkState>()
-    .When<HasMovement>();
+    .When(HasMovement);
 ```
 
 `Any<TTo>()` and `Any().To<TTo>()` do the same for a rule that applies to every state.
@@ -68,6 +74,6 @@ one is instantiated exactly once per machine.
 
 ## Where to go next
 
-Predicates cover the persistent questions — `HasMovement`, `IsGrounded`, `IsDead`. For the things
-that happen once, see [Events](./events.md). For what a state does over time, see
+Predicates cover the standing questions — is there input, is there ground, is it over. For the
+things that happen once, see [Events](./events.md). For what a state does over time, see
 [Activities](./activities.md).

@@ -5,7 +5,8 @@ namespace Fynite
 {
     /// <summary>
     /// Collects the transitions of a machine. States referenced by <c>From</c>, <c>To</c> and
-    /// <c>Start</c> are registered automatically.
+    /// <c>Start</c> are registered automatically. A module never creates one: it receives the
+    /// machine's own instance in <see cref="IFyniteTransitions{TContext}.Configure"/>.
     /// </summary>
     public sealed class FyniteTransitions<TContext> where TContext : class
     {
@@ -20,6 +21,10 @@ namespace Fynite
             new List<FyniteEventBinding<TContext>>();
 
         private bool sealedForBuild;
+
+        internal FyniteTransitions()
+        {
+        }
 
         public FyniteTransitionSource<TContext> From<TState>()
             where TState : FyniteState<TContext>, new()
@@ -275,6 +280,15 @@ namespace Fynite
                     "Fynite: transitions cannot be changed after the machine has been built.");
             }
         }
+
+        /// <summary>
+        /// What the fluent structs raise when they were defaulted into existence rather than handed
+        /// out by this class. Lives here so both of them say the same thing.
+        /// </summary>
+        internal static InvalidOperationException Detached()
+            => new InvalidOperationException(
+                "Fynite: this transition builder was not created by FyniteTransitions. Start from " +
+                "From<TState>(), From<TFrom, TTo>() or Any() on the instance Configure receives.");
     }
 
     public readonly struct FyniteTransitionSource<TContext> where TContext : class
@@ -290,7 +304,17 @@ namespace Fynite
 
         public FyniteTransitionTarget<TContext> To<TState>()
             where TState : FyniteState<TContext>, new()
-            => new FyniteTransitionTarget<TContext>(transitions, from, transitions.Register<TState>());
+        {
+            var owner = Owner();
+            return new FyniteTransitionTarget<TContext>(owner, from, owner.Register<TState>());
+        }
+
+        /// <summary>
+        /// A public struct can always be defaulted into existence, and a defaulted one points at no
+        /// machine. Saying that beats the <c>NullReferenceException</c> the field would raise.
+        /// </summary>
+        private FyniteTransitions<TContext> Owner()
+            => transitions ?? throw FyniteTransitions<TContext>.Detached();
     }
 
     public readonly struct FyniteTransitionTarget<TContext> where TContext : class
@@ -308,16 +332,20 @@ namespace Fynite
 
         public FyniteTransitions<TContext> When<TPredicate>()
             where TPredicate : IPredicate<TContext>, new()
-            => transitions.Add(from, to, new TPredicate());
+            => Owner().Add(from, to, new TPredicate());
 
         /// <param name="predicate">
         /// Asked on every cycle the transition is considered, so it must be side effect free.
         /// </param>
         public FyniteTransitions<TContext> When(Func<TContext, bool> predicate)
-            => transitions.Add(
+        {
+            var owner = Owner();
+
+            return owner.Add(
                 from,
                 to,
                 predicate == null ? null : new FyniteDelegatePredicate<TContext>(predicate));
+        }
 
         /// <summary>
         /// Runs this transition when the event happens, instead of when a condition holds.
@@ -327,6 +355,14 @@ namespace Fynite
         /// exactly once, during <c>Build()</c>, and never again; returning null is an error.
         /// </param>
         public FyniteTransitions<TContext> On(Func<TContext, FyniteEvent> source)
-            => transitions.AddEvent(from, to, source);
+            => Owner().AddEvent(from, to, source);
+
+        /// <summary>
+        /// A public struct can always be defaulted into existence, and a defaulted one points at no
+        /// machine. Saying that beats the <c>NullReferenceException</c> the field would raise, and it
+        /// happens before the delegate is even looked at.
+        /// </summary>
+        private FyniteTransitions<TContext> Owner()
+            => transitions ?? throw FyniteTransitions<TContext>.Detached();
     }
 }

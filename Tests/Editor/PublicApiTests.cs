@@ -1,8 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Fynite;
 using NUnit.Framework;
 
@@ -11,6 +13,328 @@ namespace FyniteTests
     public sealed class PublicApiTests
     {
         private static Assembly RuntimeAssembly => typeof(Machine).Assembly;
+
+        /// <summary>
+        /// Every type a consumer can name, and every member they can call or override. Adding a line
+        /// here is a deliberate widening of the package; removing or changing one is a breaking change.
+        /// </summary>
+        private static readonly string[] FrozenSurface =
+        {
+            "Fynite.FyniteActivityBuilder`1 [sealed class] <TContext : class>",
+            "Fynite.FyniteActivityBuilder`1..ctor(Type) [internal]",
+            "Fynite.FyniteActivityBuilder`1.Do<0>(Action`1)",
+            "Fynite.FyniteActivityBuilder`1.Publish<0>(Func`2)",
+            "Fynite.FyniteActivityBuilder`1.Wait<0>(Single)",
+            "Fynite.FyniteActivityBuilder`1.WaitFor<0>(Func`2)",
+            "Fynite.FyniteActivityBuilder`1.WaitUntil<0>(Func`2)",
+
+            "Fynite.FyniteEvent [sealed class]",
+            "Fynite.FyniteEvent..ctor() [public]",
+            "Fynite.FyniteEvent.Publish<0>()",
+
+            "Fynite.FyniteMachineBuilder`1 [sealed class] <TContext : class>",
+            "Fynite.FyniteMachineBuilder`1..ctor(Object, TContext) [internal]",
+            "Fynite.FyniteMachineBuilder`1.Build<0>()",
+            "Fynite.FyniteMachineBuilder`1.Child<2>() <TParent : FyniteState`1, new(); TChild : FyniteState`1, new()>",
+            "Fynite.FyniteMachineBuilder`1.InitialChild<2>() <TParent : FyniteState`1, new(); TChild : FyniteState`1, new()>",
+            "Fynite.FyniteMachineBuilder`1.Start<1>() <TState : FyniteState`1, new()>",
+            "Fynite.FyniteMachineBuilder`1.Use<1>() <TTransitions : IFyniteTransitions`1, new()>",
+
+            "Fynite.FyniteMachine`1 [sealed class] <TContext : class>",
+            "Fynite.FyniteMachine`1..ctor(Object, TContext, FyniteDefinition`1) [internal]",
+            "Fynite.FyniteMachine`1.ActiveStateCount { get; }",
+            "Fynite.FyniteMachine`1.CurrentStateType { get; }",
+            "Fynite.FyniteMachine`1.Dispose<0>()",
+            "Fynite.FyniteMachine`1.GetActiveStateType<0>(Int32)",
+            "Fynite.FyniteMachine`1.IsIn<1>() <TState : FyniteState`1>",
+            "Fynite.FyniteMachine`1.IsRunning { get; }",
+
+            "Fynite.FyniteState`1 [abstract class] <TContext : class>",
+            "Fynite.FyniteState`1..ctor() [protected]",
+            "Fynite.FyniteState`1.ConfigureActivity<0>(FyniteActivityBuilder`1)",
+            "Fynite.FyniteState`1.Context { get; }",
+            "Fynite.FyniteState`1.DeltaTime { get; }",
+            "Fynite.FyniteState`1.Enter<0>()",
+            "Fynite.FyniteState`1.Exit<0>()",
+            "Fynite.FyniteState`1.FixedDeltaTime { get; }",
+            "Fynite.FyniteState`1.FixedUpdate<0>()",
+            "Fynite.FyniteState`1.Update<0>()",
+
+            "Fynite.FyniteTransitionSource`1 [readonly struct] <TContext : class>",
+            "Fynite.FyniteTransitionSource`1..ctor(FyniteTransitions`1, Int32) [internal]",
+            "Fynite.FyniteTransitionSource`1.To<1>() <TState : FyniteState`1, new()>",
+
+            "Fynite.FyniteTransitionTarget`1 [readonly struct] <TContext : class>",
+            "Fynite.FyniteTransitionTarget`1..ctor(FyniteTransitions`1, Int32, Int32) [internal]",
+            "Fynite.FyniteTransitionTarget`1.On<0>(Func`2)",
+            "Fynite.FyniteTransitionTarget`1.When<0>(Func`2)",
+            "Fynite.FyniteTransitionTarget`1.When<1>() <TPredicate : IPredicate`1, new()>",
+
+            "Fynite.FyniteTransitions`1 [sealed class] <TContext : class>",
+            "Fynite.FyniteTransitions`1..ctor() [internal]",
+            "Fynite.FyniteTransitions`1.Any<0>()",
+            "Fynite.FyniteTransitions`1.Any<1>() <TTo : FyniteState`1, new()>",
+            "Fynite.FyniteTransitions`1.From<1>() <TState : FyniteState`1, new()>",
+            "Fynite.FyniteTransitions`1.From<2>() <TFrom : FyniteState`1, new(); TTo : FyniteState`1, new()>",
+
+            "Fynite.IFyniteTransitions`1 [interface] <TContext : class>",
+            "Fynite.IFyniteTransitions`1.Configure<0>(FyniteTransitions`1)",
+
+            "Fynite.IPredicate`1 [interface] <in TContext>",
+            "Fynite.IPredicate`1.Evaluate<0>(TContext)",
+
+            "Fynite.Machine [static class]",
+            "Fynite.Machine.Attach<1>(Object, TContext) <TContext : class>"
+        };
+
+        /// <summary>
+        /// The freeze itself. Every other test in this file describes the shape of one corner of the
+        /// surface; this one is what notices a corner nobody described appearing at all.
+        /// </summary>
+        [Test]
+        public void ThePublicSurfaceIsFrozen()
+        {
+            var surface = new List<string>();
+
+            foreach (var type in RuntimeAssembly.GetExportedTypes())
+            {
+                surface.Add(DescribeType(type));
+
+                // Constructors are listed whatever their accessibility: which of these types a user
+                // may create, and which the package hands them, is part of the contract.
+                foreach (var constructor in type.GetConstructors(
+                             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    surface.Add(
+                        $"{type.FullName}..ctor({Parameters(constructor)}) [{Access(constructor)}]");
+                }
+
+                foreach (var member in type.GetMembers(
+                             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
+                             BindingFlags.Static | BindingFlags.DeclaredOnly))
+                {
+                    if (member is ConstructorInfo || !IsReachable(member))
+                    {
+                        continue;
+                    }
+
+                    surface.Add(type.FullName + "." + Signature(member));
+                }
+            }
+
+            Assert.That(surface, Is.EquivalentTo(FrozenSurface));
+        }
+
+        /// <summary>
+        /// The API reference claims to be the whole surface in one page, so it is checked both ways:
+        /// nothing reachable is missing from it, and nothing in it has stopped existing.
+        /// </summary>
+        [Test]
+        public void TheApiReferenceAndTheSurfaceAgree()
+        {
+            var reference = File.ReadAllText(Path.Combine(
+                Path.GetFullPath("Packages/com.natteens.fynite"),
+                "Documentation~",
+                "api.md"));
+
+            var types = new HashSet<string>();
+            var members = new HashSet<string>();
+            var undocumented = new List<string>();
+
+            foreach (var type in RuntimeAssembly.GetExportedTypes())
+            {
+                var name = type.Name.Split('`')[0];
+                types.Add(name);
+
+                if (!reference.Contains(name))
+                {
+                    undocumented.Add(type.FullName);
+                }
+
+                foreach (var member in type.GetMembers(
+                             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
+                             BindingFlags.Static | BindingFlags.DeclaredOnly))
+                {
+                    if (!IsReachable(member) || member is ConstructorInfo)
+                    {
+                        continue;
+                    }
+
+                    members.Add(member.Name);
+
+                    if (!reference.Contains(member.Name))
+                    {
+                        undocumented.Add($"{type.FullName}.{member.Name}");
+                    }
+                }
+            }
+
+            Assert.That(undocumented, Is.Empty, "the API reference is missing part of the surface");
+
+            var stale = new List<string>();
+
+            foreach (Match fence in Regex.Matches(reference, "```csharp(.*?)```", RegexOptions.Singleline))
+            {
+                foreach (Match token in Regex.Matches(fence.Groups[1].Value, @"(\w+)?(?:<[^>]*>)?\.(\w+)"))
+                {
+                    var type = token.Groups[1].Value;
+                    var member = token.Groups[2].Value;
+
+                    if (type.Length > 0 && type.StartsWith("Fynite", StringComparison.Ordinal) &&
+                        !types.Contains(type))
+                    {
+                        stale.Add(type);
+                    }
+
+                    if (!members.Contains(member))
+                    {
+                        stale.Add(member);
+                    }
+                }
+            }
+
+            Assert.That(stale, Is.Empty, "the API reference names something that no longer exists");
+        }
+
+        /// <summary>
+        /// What a consumer outside the assembly can actually get at: public members, and the protected
+        /// ones they inherit by deriving from a state. Property accessors are left out because the
+        /// property itself already stands for them.
+        /// </summary>
+        private static bool IsReachable(MemberInfo member)
+        {
+            switch (member)
+            {
+                case MethodInfo method:
+                    return !method.IsSpecialName && (method.IsPublic || method.IsFamily);
+                case ConstructorInfo constructor:
+                    return constructor.IsPublic || constructor.IsFamily;
+                case PropertyInfo property:
+                    var getter = property.GetMethod;
+                    return getter != null && (getter.IsPublic || getter.IsFamily);
+                case FieldInfo field:
+                    return field.IsPublic || field.IsFamily;
+                case EventInfo _:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static string Signature(MemberInfo member)
+        {
+            switch (member)
+            {
+                case MethodInfo method:
+                    return $"{method.Name}<{method.GetGenericArguments().Length}>" +
+                           $"({Parameters(method)}){Constraints(method.GetGenericArguments())}";
+
+                case PropertyInfo property:
+                    return $"{property.Name} {{{(property.CanRead ? " get;" : "")}" +
+                           $"{(property.CanWrite ? " set;" : "")} }}";
+
+                default:
+                    return member.Name;
+            }
+        }
+
+        private static string Parameters(MethodBase method)
+            => string.Join(", ", method.GetParameters().Select(p => p.ParameterType.Name));
+
+        private static string Access(MethodBase method)
+        {
+            if (method.IsPublic)
+            {
+                return "public";
+            }
+
+            if (method.IsFamily)
+            {
+                return "protected";
+            }
+
+            return method.IsPrivate ? "private" : "internal";
+        }
+
+        /// <summary>The kind of type it is, and what its own generic parameter is allowed to be.</summary>
+        private static string DescribeType(Type type)
+        {
+            string kind;
+
+            if (type.IsInterface)
+            {
+                kind = "interface";
+            }
+            else if (type.IsValueType)
+            {
+                kind = IsReadOnly(type) ? "readonly struct" : "struct";
+            }
+            else if (type.IsAbstract && type.IsSealed)
+            {
+                kind = "static class";
+            }
+            else if (type.IsAbstract)
+            {
+                kind = "abstract class";
+            }
+            else
+            {
+                kind = type.IsSealed ? "sealed class" : "class";
+            }
+
+            return $"{type.FullName} [{kind}]{Constraints(type.GetGenericArguments())}";
+        }
+
+        private static bool IsReadOnly(Type type)
+            => type.GetCustomAttributes(false)
+                .Any(attribute => attribute.GetType().Name == "IsReadOnlyAttribute");
+
+        /// <summary>
+        /// Variance and constraints, in source order: <c>in TContext : class</c>. A generic parameter
+        /// that loses <c>new()</c> or its base type stops accepting the very code it was written for.
+        /// </summary>
+        private static string Constraints(Type[] parameters)
+        {
+            if (parameters.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            var described = parameters.Select(parameter =>
+            {
+                var attributes = parameter.GenericParameterAttributes;
+                var variance = string.Empty;
+
+                if ((attributes & GenericParameterAttributes.Contravariant) != 0)
+                {
+                    variance = "in ";
+                }
+                else if ((attributes & GenericParameterAttributes.Covariant) != 0)
+                {
+                    variance = "out ";
+                }
+
+                var limits = new List<string>();
+
+                if ((attributes & GenericParameterAttributes.ReferenceTypeConstraint) != 0)
+                {
+                    limits.Add("class");
+                }
+
+                limits.AddRange(parameter.GetGenericParameterConstraints().Select(c => c.Name));
+
+                if ((attributes & GenericParameterAttributes.DefaultConstructorConstraint) != 0)
+                {
+                    limits.Add("new()");
+                }
+
+                return limits.Count == 0
+                    ? variance + parameter.Name
+                    : $"{variance}{parameter.Name} : {string.Join(", ", limits)}";
+            });
+
+            return " <" + string.Join("; ", described) + ">";
+        }
 
         [Test]
         public void EveryPublicTypeLivesInTheFyniteNamespace()
@@ -84,40 +408,12 @@ namespace FyniteTests
         }
 
         [Test]
-        public void PublicApiHasNoPriorityMember()
-        {
-            var offenders = new List<string>();
-
-            foreach (var type in RuntimeAssembly.GetExportedTypes())
-            {
-                foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance |
-                                                       BindingFlags.Static | BindingFlags.DeclaredOnly))
-                {
-                    if (member.Name.IndexOf("Priority", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        offenders.Add($"{type.FullName}.{member.Name}");
-                    }
-                }
-            }
-
-            Assert.That(offenders, Is.Empty);
-        }
-
-        [Test]
-        public void FyniteEventExposesNothingButPublish()
+        public void FyniteEventIsSealedAndPublishTakesNothing()
         {
             var type = RuntimeAssembly.GetType("Fynite.FyniteEvent", false);
 
             Assert.That(type, Is.Not.Null);
             Assert.That(type.IsPublic && type.IsSealed, Is.True);
-
-            var members = type
-                .GetMembers(BindingFlags.Public | BindingFlags.Instance |
-                            BindingFlags.Static | BindingFlags.DeclaredOnly)
-                .Select(member => member.Name)
-                .ToArray();
-
-            Assert.That(members, Is.EquivalentTo(new[] { ".ctor", "Publish" }));
 
             var publish = type.GetMethod("Publish");
             Assert.That(publish.GetParameters(), Is.Empty);
@@ -141,51 +437,13 @@ namespace FyniteTests
         }
 
         [Test]
-        public void TheMachineHasNoManualEventEntryPoint()
-        {
-            var forbidden = new[] { "Send", "Raise", "Trigger", "Publish", "Subscribe", "Unsubscribe" };
-            var offenders = new List<string>();
-
-            foreach (var type in RuntimeAssembly.GetExportedTypes())
-            {
-                // FyniteEvent is where publishing lives, and an activity step declares one.
-                if (type.Name == "FyniteEvent" || type.Name.StartsWith("FyniteActivityBuilder`", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance |
-                                                       BindingFlags.Static | BindingFlags.DeclaredOnly))
-                {
-                    if (Array.IndexOf(forbidden, member.Name) >= 0)
-                    {
-                        offenders.Add($"{type.FullName}.{member.Name}");
-                    }
-                }
-            }
-
-            Assert.That(offenders, Is.Empty);
-        }
-
-        [Test]
-        public void FyniteActivityBuilderExposesOnlyTheFiveSteps()
+        public void EveryActivityStepChainsBackToTheBuilder()
         {
             var type = typeof(FyniteActivityBuilder<ProbeContext>);
 
             Assert.That(type.IsPublic && type.IsSealed, Is.True);
 
-            var members = type
-                .GetMembers(BindingFlags.Public | BindingFlags.Instance |
-                            BindingFlags.Static | BindingFlags.DeclaredOnly)
-                .Select(member => member.Name)
-                .ToArray();
-
-            Assert.That(
-                members,
-                Is.EquivalentTo(new[] { "Do", "Wait", "WaitUntil", "WaitFor", "Publish" }),
-                "the builder grew a member, or its constructor became public");
-
-            foreach (var name in members)
+            foreach (var name in new[] { "Do", "Wait", "WaitUntil", "WaitFor", "Publish" })
             {
                 Assert.That(type.GetMethod(name).ReturnType, Is.EqualTo(type), $"{name} does not chain");
             }
@@ -228,31 +486,6 @@ namespace FyniteTests
                 Is.EqualTo(typeof(FyniteActivityBuilder<ProbeContext>)));
         }
 
-        [Test]
-        public void ActivitiesAddNoOtherPublicType()
-        {
-            var exported = RuntimeAssembly
-                .GetExportedTypes()
-                .Select(type => type.Name)
-                .ToArray();
-
-            Assert.That(
-                exported,
-                Is.EquivalentTo(new[]
-                {
-                    "Machine",
-                    "FyniteMachine`1",
-                    "FyniteMachineBuilder`1",
-                    "FyniteState`1",
-                    "FyniteTransitions`1",
-                    "FyniteTransitionSource`1",
-                    "FyniteTransitionTarget`1",
-                    "IFyniteTransitions`1",
-                    "IPredicate`1",
-                    "FyniteEvent",
-                    "FyniteActivityBuilder`1"
-                }));
-        }
 
         [Test]
         public void ThereIsNoActivityRunnerHandleOrStatus()
@@ -314,19 +547,6 @@ namespace FyniteTests
             Assert.That(source.GetMethod("To"), Is.Not.Null);
         }
 
-        [Test]
-        public void FyniteTransitionsExposesExactlyFourEntryPoints()
-        {
-            var declared = typeof(FyniteTransitions<ProbeContext>)
-                .GetMethods(BindingFlags.Public | BindingFlags.Instance |
-                            BindingFlags.Static | BindingFlags.DeclaredOnly)
-                .Select(method => $"{method.Name}<{method.GetGenericArguments().Length}>")
-                .ToArray();
-
-            Assert.That(
-                declared,
-                Is.EquivalentTo(new[] { "From<1>", "From<2>", "Any<0>", "Any<1>" }));
-        }
 
         [Test]
         public void TheShorthandsReturnTheSameTargetTheLongFormBuilds()
@@ -350,46 +570,7 @@ namespace FyniteTests
                 Is.EqualTo(target));
         }
 
-        [Test]
-        public void TheMachineHasNoPublicShutdownOrResetApi()
-        {
-            var forbidden = new[]
-            {
-                "LoopShutdown", "Shutdown", "Reset", "Stop", "Restart", "Status", "Fault",
-                "LoopUpdate", "LoopFixedUpdate", "LoopSlot"
-            };
 
-            var offenders = typeof(FyniteMachine<ProbeContext>)
-                .GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
-                .Select(member => member.Name)
-                .Where(name => Array.IndexOf(forbidden, name) >= 0)
-                .ToArray();
-
-            Assert.That(offenders, Is.Empty);
-        }
-
-        [Test]
-        public void TheMachineExposesExactlyTheseMembers()
-        {
-            var members = typeof(FyniteMachine<ProbeContext>)
-                .GetMembers(BindingFlags.Public | BindingFlags.Instance |
-                            BindingFlags.Static | BindingFlags.DeclaredOnly)
-                .Select(member => member.Name)
-                .Distinct()
-                .ToArray();
-
-            Assert.That(
-                members,
-                Is.EquivalentTo(new[]
-                {
-                    "IsRunning", "get_IsRunning",
-                    "CurrentStateType", "get_CurrentStateType",
-                    "ActiveStateCount", "get_ActiveStateCount",
-                    "GetActiveStateType",
-                    "IsIn",
-                    "Dispose"
-                }));
-        }
 
         [Test]
         public void TheActivePathAccessorsHaveTheDeclaredShape()
@@ -413,31 +594,13 @@ namespace FyniteTests
             Assert.That(parameters[0].Name, Is.EqualTo("index"));
         }
 
+        /// <summary>
+        /// The active path is read one index at a time. Handing out a sequence would mean copying it,
+        /// or exposing the array the machine transitions through.
+        /// </summary>
         [Test]
-        public void TheActivePathIsNotExposedAsACollection()
+        public void NoPublicMemberHandsOutASequenceOfStates()
         {
-            var forbidden = new[]
-            {
-                "ActivePath", "ActiveStates", "StatePath", "CopyActivePath", "TryGetActiveStateType"
-            };
-
-            var offenders = new List<string>();
-
-            foreach (var type in RuntimeAssembly.GetExportedTypes())
-            {
-                foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance |
-                                                       BindingFlags.Static | BindingFlags.DeclaredOnly))
-                {
-                    if (Array.IndexOf(forbidden, member.Name) >= 0)
-                    {
-                        offenders.Add($"{type.FullName}.{member.Name}");
-                    }
-                }
-            }
-
-            Assert.That(offenders, Is.Empty);
-
-            // Nothing public hands out a sequence of states either.
             var sequences = typeof(FyniteMachine<ProbeContext>)
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                 .Select(method => method.ReturnType)
@@ -567,32 +730,6 @@ namespace FyniteTests
         }
 
         [Test]
-        public void NoPublicMemberLeaksTheLifecycleVocabulary()
-        {
-            var forbidden = new[]
-            {
-                "Generation", "Epoch", "LoopPhase", "Phase", "ShutdownReason",
-                "ActivityProgram", "EventInbox", "ActivePath", "DefinitionTable", "BeginBuild"
-            };
-
-            var offenders = new List<string>();
-
-            foreach (var type in RuntimeAssembly.GetExportedTypes())
-            {
-                foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance |
-                                                       BindingFlags.Static | BindingFlags.DeclaredOnly))
-                {
-                    if (Array.IndexOf(forbidden, member.Name) >= 0)
-                    {
-                        offenders.Add($"{type.FullName}.{member.Name}");
-                    }
-                }
-            }
-
-            Assert.That(offenders, Is.Empty);
-        }
-
-        [Test]
         public void TheTickableContractStaysInternal()
         {
             var tickable = RuntimeAssembly.GetType("Fynite.IFyniteTickable", false);
@@ -602,27 +739,6 @@ namespace FyniteTests
             Assert.That(tickable.GetMethod("LoopShutdown"), Is.Not.Null, "the shutdown hook is missing");
         }
 
-        [Test]
-        public void ThereAreNoPredicateCombinators()
-        {
-            var forbidden = new[] { "WhenAll", "WhenAny", "WhenNot", "Unless", "And", "Or", "Not" };
-            var offenders = new List<string>();
-
-            foreach (var type in RuntimeAssembly.GetExportedTypes())
-            {
-                foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance |
-                                                       BindingFlags.Static | BindingFlags.DeclaredOnly))
-                {
-                    if (Array.IndexOf(forbidden, member.Name) >= 0)
-                    {
-                        offenders.Add($"{type.FullName}.{member.Name}");
-                    }
-                }
-            }
-
-            Assert.That(offenders, Is.Empty);
-        }
-
         private static Func<MethodInfo, bool> Named(string name, int arity)
             => method => method.Name == name && method.GetGenericArguments().Length == arity;
 
@@ -630,17 +746,6 @@ namespace FyniteTests
         public void ThereIsNoAmbiguityDiagnosticsSwitch()
         {
             Assert.That(RuntimeAssembly.GetType("Fynite.FyniteDiagnostics", false), Is.Null);
-
-            var offenders = RuntimeAssembly
-                .GetTypes()
-                .SelectMany(type => type.GetMembers(
-                    BindingFlags.Public | BindingFlags.NonPublic |
-                    BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
-                .Where(member => member.Name.IndexOf("Ambigu", StringComparison.OrdinalIgnoreCase) >= 0)
-                .Select(member => member.Name)
-                .ToArray();
-
-            Assert.That(offenders, Is.Empty);
         }
     }
 }

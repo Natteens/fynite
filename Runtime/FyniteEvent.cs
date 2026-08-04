@@ -13,6 +13,14 @@ namespace Fynite
         private int[] slots;
         private int count;
 
+        /// <summary>
+        /// An event belongs to whatever owns the occurrence, so this is the one type of the package a
+        /// user creates: <c>public FyniteEvent Damaged { get; } = new FyniteEvent();</c>.
+        /// </summary>
+        public FyniteEvent()
+        {
+        }
+
         /// <summary>How many machines are listening. Exists for the tests of the package.</summary>
         internal int SubscriberCount => count;
 

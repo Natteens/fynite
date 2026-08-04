@@ -1,9 +1,44 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Fynite;
 
 namespace FyniteTests
 {
+    /// <summary>
+    /// Reaches private detail of the package, for the few tests that have no other way in. Every use
+    /// of reflection lives here, so nothing in <c>Runtime</c>, <c>Editor</c> or <c>Samples~</c> has to
+    /// carry a member it does not use itself.
+    /// </summary>
+    public static class Internals
+    {
+        /// <summary>The draft list a builder only creates once a step has been declared.</summary>
+        public static object DraftsOf(FyniteActivityBuilder<ProbeContext> builder)
+            => typeof(FyniteActivityBuilder<ProbeContext>)
+                .GetField("drafts", BindingFlags.NonPublic | BindingFlags.Instance)
+                .GetValue(builder);
+
+        /// <summary>An activity step of a kind no factory of the package can produce.</summary>
+        internal static FyniteActivityStep<ProbeContext> StepOfUnknownKind()
+        {
+            var constructor = typeof(FyniteActivityStep<ProbeContext>).GetConstructor(
+                BindingFlags.NonPublic | BindingFlags.Instance,
+                null,
+                new[]
+                {
+                    typeof(FyniteActivityStepKind),
+                    typeof(Action<ProbeContext>),
+                    typeof(Func<ProbeContext, bool>),
+                    typeof(FyniteEvent),
+                    typeof(float)
+                },
+                null);
+
+            return (FyniteActivityStep<ProbeContext>)constructor.Invoke(
+                new object[] { (FyniteActivityStepKind)99, null, null, null, 0f });
+        }
+    }
+
     public sealed class ProbeContext
     {
         public readonly List<string> Log = new List<string>();

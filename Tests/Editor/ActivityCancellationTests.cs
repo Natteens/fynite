@@ -144,7 +144,7 @@ namespace FyniteTests
         {
             var execution = new FyniteActivityExecution<ProbeContext>(new[]
             {
-                new FyniteActivityStep<ProbeContext>((FyniteActivityStepKind)99, null, null, null, 0f)
+                Internals.StepOfUnknownKind()
             });
 
             Assert.That(

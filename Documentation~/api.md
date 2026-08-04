@@ -4,6 +4,13 @@
 
 The whole public surface of the package.
 
+`FyniteEvent` is the one type you create — `new FyniteEvent()` — because the occurrence belongs to
+whatever publishes it. Everything else is handed to you: `Machine.Attach` returns the builder, the
+builder returns the machine, `Configure` receives the `FyniteTransitions<TContext>` of that machine,
+and `ConfigureActivity` receives the `FyniteActivityBuilder<TContext>` of that state. None of them
+has a public constructor, and the two fluent structs are only valid when a `FyniteTransitions`
+handed them out.
+
 ## Composition
 
 ```csharp
@@ -58,19 +65,22 @@ FyniteActivityBuilder<TContext>.Publish(context => ...)
 ```csharp
 FyniteTransitions<TContext>.From<TFrom, TTo>()
 FyniteTransitions<TContext>.Any<TTo>()
-    .When<TPredicate>()
-    .When(context => ...)
-    .On(context => ...)
-
 FyniteTransitions<TContext>.From<TState>()
 FyniteTransitions<TContext>.Any()
-    .To<TState>()
-        .When<TPredicate>()
-        .When(context => ...)
-        .On(context => ...)
 
+FyniteTransitionSource<TContext>.To<TState>()
+
+FyniteTransitionTarget<TContext>.When<TPredicate>()
+FyniteTransitionTarget<TContext>.When(context => ...)
+FyniteTransitionTarget<TContext>.On(context => ...)
+
+new FyniteEvent()
 FyniteEvent.Publish()
 ```
+
+`From<TFrom, TTo>()` and `Any<TTo>()` hand back a target, ready for the condition. `From<TState>()`
+and `Any()` hand back a source, which names the other end with `To<TState>()` and reaches the same
+target. Both are structs you chain through rather than types you store.
 
 ## Allocation
 
