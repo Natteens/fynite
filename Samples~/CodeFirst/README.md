@@ -73,10 +73,23 @@ created by the controller and belongs to that machine alone.
 `IdleState`, `WalkState`, `GroundedState` and `AirborneState` each override only the callbacks they
 use. None of them knows which state comes next.
 
-`HasMovement` and `HasNoMovement` are the predicates — one question each, no side effects.
+`LocomotionTransitions` routes `Idle` and `Walk` on one question — is there movement input right
+now? — and asks it with two private methods of its own:
 
-`LocomotionTransitions` routes `Idle` and `Walk` with those predicates. `AirTransitions` routes
-`Grounded` and `Airborne` with `On(...)`, pointing straight at `JumpRequested` and `Landed`, and
+```csharp
+transitions
+    .From<IdleState, WalkState>()
+    .When(HasMovement);
+
+private static bool HasMovement(ExampleContext context) => context.Input.HasMovement;
+```
+
+A condition this local does not need a class. `IPredicate<ExampleContext>` earns its keep when a
+rule is reused across modules or deserves a name of its own; until then, the rule stays next to the
+transition it belongs to.
+
+`AirTransitions` routes `Grounded` and `Airborne` with `On(...)`, pointing straight at
+`JumpRequested` and `Landed`, and
 `ActionTransitions` does the same for `ActionRequested` and `ActionFinished`. Because `Grounded` is
 the parent, its rules to leave cover both children without being written twice.
 

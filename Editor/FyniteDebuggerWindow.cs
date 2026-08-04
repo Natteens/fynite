@@ -26,7 +26,7 @@ namespace FyniteEditor
 
         private readonly FyniteDebuggerModel model = new FyniteDebuggerModel();
 
-        /// <summary>Backs the ListView. Reused; the ListView keeps pointing at this same instance.</summary>
+        /// <summary>The ListView holds on to this instance, so it is refilled and never replaced.</summary>
         private readonly List<FyniteDebuggerEntry> items = new List<FyniteDebuggerEntry>();
 
         private Label machineCountLabel;
@@ -65,7 +65,7 @@ namespace FyniteEditor
 
             if (layout == null || style == null)
             {
-                // Say which asset is missing and stop. No half-built UI, and no callbacks left behind.
+                // Stop here rather than build half a window whose elements are missing.
                 rootVisualElement.Add(new HelpBox(
                     $"Fynite: the debugger UI could not be loaded. Missing " +
                     $"{(layout == null ? LayoutPath : StylePath)}.",
@@ -128,7 +128,6 @@ namespace FyniteEditor
 
         private void ConfigureToolbar()
         {
-            // The button and the schedule go through the same method, so there is one refresh path.
             refreshButton.clicked += Refresh;
 
             autoRefreshToggle.SetValueWithoutNotify(true);
@@ -188,7 +187,6 @@ namespace FyniteEditor
             refreshLoop = null;
         }
 
-        /// <summary>The one refresh path: the toolbar button and the schedule both land here.</summary>
         private void Refresh()
         {
             if (machineList == null)
@@ -225,7 +223,6 @@ namespace FyniteEditor
             }
         }
 
-        /// <summary>Pushes the model into the UI. Never reads a machine itself.</summary>
         private void Sync()
         {
             items.Clear();
@@ -270,7 +267,6 @@ namespace FyniteEditor
 
             if (entry == null)
             {
-                // Nothing of the previous selection is left on screen.
                 ownerField.SetValueWithoutNotify(null);
                 activePathContainer.Clear();
                 return;

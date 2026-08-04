@@ -103,7 +103,7 @@ public sealed class LocomotionTransitions : IFyniteTransitions<PlayerContext>
 
         transitions
             .From<WalkState, IdleState>()
-            .When<HasNoMovement>();
+            .When(context => !context.Input.HasMovement);
     }
 }
 ```

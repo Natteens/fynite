@@ -1,8 +1,8 @@
 namespace Fynite
 {
     /// <summary>
-    /// The answer to "does anything here fire?". <c>Found</c> says whether the other two mean
-    /// anything, so a lookup needs no out-of-band index to stand for "nothing matched".
+    /// The answer a lookup gives. <c>Found</c> says whether the other two mean anything, so nothing
+    /// has to reserve an index to stand for "nothing matched".
     /// </summary>
     internal readonly struct FyniteMatch
     {

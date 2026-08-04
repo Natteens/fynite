@@ -10,7 +10,7 @@ namespace Fynite
     {
         private TContext context;
         private FyniteTimeSource time;
-        private FyniteActivityPlan<TContext> activity;
+        private FyniteActivityExecution<TContext> activity;
 
         protected TContext Context => context;
 

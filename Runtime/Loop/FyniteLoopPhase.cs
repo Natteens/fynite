@@ -1,8 +1,8 @@
 namespace Fynite
 {
     /// <summary>
-    /// What the loop is doing right now. One value instead of a set of booleans, because the states
-    /// are mutually exclusive and the combinations the booleans allowed were never valid.
+    /// What the loop is doing right now. The three are mutually exclusive: a tick and a reset never
+    /// overlap, and neither ever starts a second one of itself.
     /// </summary>
     internal enum FyniteLoopPhase
     {

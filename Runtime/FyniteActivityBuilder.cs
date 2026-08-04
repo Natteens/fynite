@@ -10,12 +10,15 @@ namespace Fynite
     /// </summary>
     public sealed class FyniteActivityBuilder<TContext> where TContext : class
     {
-        private readonly List<FyniteActivityDraft<TContext>> drafts =
-            new List<FyniteActivityDraft<TContext>>();
-
         private readonly Type state;
 
+        /// <summary>Created by the first step, so a state that declares none allocates nothing.</summary>
+        private List<FyniteActivityDraft<TContext>> drafts;
+
         internal FyniteActivityBuilder(Type state) => this.state = state;
+
+        /// <summary>Whether any step was declared. Exists for the tests of the package.</summary>
+        internal bool HasDrafts => drafts != null;
 
         /// <summary>
         /// Runs <paramref name="action"/> once, the moment the chain reaches this step, and moves on
@@ -28,8 +31,7 @@ namespace Fynite
                 throw new ArgumentNullException(nameof(action), Describe("Do() has no action"));
             }
 
-            drafts.Add(FyniteActivityDraft<TContext>.ForDo(action));
-            return this;
+            return Add(FyniteActivityDraft<TContext>.ForDo(action));
         }
 
         /// <summary>
@@ -46,8 +48,7 @@ namespace Fynite
                     Describe("Wait() needs a finite duration of zero or more seconds"));
             }
 
-            drafts.Add(FyniteActivityDraft<TContext>.ForWait(seconds));
-            return this;
+            return Add(FyniteActivityDraft<TContext>.ForWait(seconds));
         }
 
         /// <summary>
@@ -63,8 +64,7 @@ namespace Fynite
                     Describe("WaitUntil() has no condition"));
             }
 
-            drafts.Add(FyniteActivityDraft<TContext>.ForWaitUntil(condition));
-            return this;
+            return Add(FyniteActivityDraft<TContext>.ForWaitUntil(condition));
         }
 
         /// <summary>
@@ -84,8 +84,7 @@ namespace Fynite
                     Describe("WaitFor() has no event source"));
             }
 
-            drafts.Add(FyniteActivityDraft<TContext>.ForWaitFor(source));
-            return this;
+            return Add(FyniteActivityDraft<TContext>.ForWaitFor(source));
         }
 
         /// <summary>
@@ -104,17 +103,16 @@ namespace Fynite
                     Describe("Publish() has no event source"));
             }
 
-            drafts.Add(FyniteActivityDraft<TContext>.ForPublish(source));
-            return this;
+            return Add(FyniteActivityDraft<TContext>.ForPublish(source));
         }
 
         /// <summary>
         /// Resolves every selector against the context, once, and freezes the chain. Returns null when
-        /// the state declared no steps, which is what keeps a plain state exactly as cheap as before.
+        /// the state declared no steps, so a state without an activity has nothing to tick.
         /// </summary>
-        internal FyniteActivityPlan<TContext> Compile(TContext context)
+        internal FyniteActivityExecution<TContext> Compile(TContext context)
         {
-            if (drafts.Count == 0)
+            if (drafts == null)
             {
                 return null;
             }
@@ -125,33 +123,37 @@ namespace Fynite
             {
                 var draft = drafts[i];
 
-                switch (draft.Kind)
+                steps[i] = draft.Kind switch
                 {
-                    case FyniteActivityStepKind.Do:
-                        steps[i] = FyniteActivityStep<TContext>.ForDo(draft.Action);
-                        break;
-
-                    case FyniteActivityStepKind.Wait:
-                        steps[i] = FyniteActivityStep<TContext>.ForWait(draft.Seconds);
-                        break;
-
-                    case FyniteActivityStepKind.WaitUntil:
-                        steps[i] = FyniteActivityStep<TContext>.ForWaitUntil(draft.Condition);
-                        break;
-
-                    case FyniteActivityStepKind.WaitFor:
-                        steps[i] = FyniteActivityStep<TContext>.ForWaitFor(
-                            Resolve(draft.Selector, context, i, "WaitFor"));
-                        break;
-
-                    case FyniteActivityStepKind.Publish:
-                        steps[i] = FyniteActivityStep<TContext>.ForPublish(
-                            Resolve(draft.Selector, context, i, "Publish"));
-                        break;
-                }
+                    FyniteActivityStepKind.Do =>
+                        FyniteActivityStep<TContext>.ForDo(draft.Action),
+                    FyniteActivityStepKind.Wait =>
+                        FyniteActivityStep<TContext>.ForWait(draft.Seconds),
+                    FyniteActivityStepKind.WaitUntil =>
+                        FyniteActivityStep<TContext>.ForWaitUntil(draft.Condition),
+                    FyniteActivityStepKind.WaitFor =>
+                        FyniteActivityStep<TContext>.ForWaitFor(
+                            Resolve(draft.Selector, context, i, "WaitFor")),
+                    FyniteActivityStepKind.Publish =>
+                        FyniteActivityStep<TContext>.ForPublish(
+                            Resolve(draft.Selector, context, i, "Publish")),
+                    _ => throw new InvalidOperationException(
+                        $"Fynite: unsupported activity step '{draft.Kind}'.")
+                };
             }
 
-            return new FyniteActivityPlan<TContext>(steps);
+            return new FyniteActivityExecution<TContext>(steps);
+        }
+
+        private FyniteActivityBuilder<TContext> Add(FyniteActivityDraft<TContext> draft)
+        {
+            if (drafts == null)
+            {
+                drafts = new List<FyniteActivityDraft<TContext>>();
+            }
+
+            drafts.Add(draft);
+            return this;
         }
 
         private FyniteEvent Resolve(

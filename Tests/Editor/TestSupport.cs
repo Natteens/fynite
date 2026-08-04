@@ -18,6 +18,12 @@ namespace FyniteTests
         public bool ToLocomotion;
         public bool ToSelf;
 
+        /// <summary>
+        /// The machine under test, so a callback or an activity step can reach it the way game code
+        /// would: through the context, never through a field of the state.
+        /// </summary>
+        public FyniteMachine<ProbeContext> Machine;
+
         public readonly FyniteEvent Alpha = new FyniteEvent();
         public readonly FyniteEvent Beta = new FyniteEvent();
         public readonly FyniteEvent Gamma = new FyniteEvent();

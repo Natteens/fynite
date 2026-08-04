@@ -23,7 +23,7 @@ namespace Fynite
         internal readonly FyniteEvent Source;
         internal readonly float Seconds;
 
-        private FyniteActivityStep(
+        internal FyniteActivityStep(
             FyniteActivityStepKind kind,
             Action<TContext> action,
             Func<TContext, bool> condition,

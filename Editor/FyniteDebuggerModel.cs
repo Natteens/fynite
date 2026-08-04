@@ -14,10 +14,11 @@ namespace FyniteEditor
         /// <summary>Grows to the busiest refresh so far and is then reused; never trimmed while open.</summary>
         private readonly List<FyniteDebuggerEntry> entries = new List<FyniteDebuggerEntry>();
 
+        /// <summary>How many entries the last refresh filled, which can be fewer than the list holds.</summary>
         private int count;
+
         private int selected = -1;
 
-        /// <summary>How many machines the last refresh found.</summary>
         internal int Count => count;
 
         internal FyniteDebuggerEntry GetEntry(int index) => entries[index];
@@ -65,7 +66,7 @@ namespace FyniteEditor
 
         internal void Select(int index) => selected = index >= 0 && index < count ? index : -1;
 
-        /// <summary>Forgets everything, including every reference to a machine or an owner.</summary>
+        /// <summary>Lets go of every machine and owner the window was holding.</summary>
         internal void Clear()
         {
             for (var i = 0; i < entries.Count; i++)

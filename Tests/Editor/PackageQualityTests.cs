@@ -63,6 +63,19 @@ namespace FyniteTests
             AssertRuntimeFree("Closing");
         }
 
+        /// <summary>
+        /// An activity step stays an enum plus a struct plus a switch. Anything below would be an
+        /// object, and a virtual call, per step of every state.
+        /// </summary>
+        [Test]
+        public void RuntimeHasNoObjectPerActivityStep()
+        {
+            AssertRuntimeFree("DoStep");
+            AssertRuntimeFree("WaitStep");
+            AssertRuntimeFree("PublishStep");
+            AssertRuntimeFree("IActivityStep");
+        }
+
         [Test]
         public void RuntimeDoesNotUseLinq()
         {
@@ -196,6 +209,24 @@ namespace FyniteTests
             Assert.That(text, Does.Contain("Machine"));
             Assert.That(text, Does.Contain(".Attach(this, context)"));
             Assert.That(text, Does.Contain(".Build()"));
+        }
+
+        /// <summary>
+        /// A condition only one module asks belongs in that module. The sample used to ship a class
+        /// per answer, one of which was nothing but the negation of the other.
+        /// </summary>
+        [Test]
+        public void SampleKeepsALocalConditionInItsTransitionModule()
+        {
+            var sample = Path.Combine(PackageRoot, "Samples~", "CodeFirst", "Runtime");
+
+            Assert.That(File.Exists(Path.Combine(sample, "HasMovement.cs")), Is.False);
+            Assert.That(File.Exists(Path.Combine(sample, "HasNoMovement.cs")), Is.False);
+
+            var module = File.ReadAllText(Path.Combine(sample, "LocomotionTransitions.cs"));
+
+            Assert.That(module, Does.Contain("private static bool HasMovement"));
+            Assert.That(module, Does.Contain(".When(HasMovement)"));
         }
 
         [Test]

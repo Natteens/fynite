@@ -524,7 +524,10 @@ namespace FyniteTests
                 "Fynite.FynitePredicateTable`1",
                 "Fynite.FyniteMatch",
                 "Fynite.FyniteDefinition`1",
-                "Fynite.FyniteMachineStatus"
+                "Fynite.FyniteMachineStatus",
+                "Fynite.FyniteActivityExecution`1",
+                "Fynite.FyniteActivityStep`1",
+                "Fynite.FyniteActivityStepKind"
             };
 
             foreach (var name in internals)
@@ -534,6 +537,33 @@ namespace FyniteTests
                 Assert.That(type, Is.Not.Null, $"{name} is missing");
                 Assert.That(type.IsVisible, Is.False, $"{name} became part of the public API");
             }
+
+            // The runtime of an activity is more than the plan it was compiled from, and the old name
+            // said otherwise.
+            Assert.That(RuntimeAssembly.GetType("Fynite.FyniteActivityPlan`1", false), Is.Null);
+        }
+
+        /// <summary>
+        /// One enum, one struct and one switch. A step is never an object, and never dispatched
+        /// through a type of its own.
+        /// </summary>
+        [Test]
+        public void ThereIsNoObjectPerActivityStep()
+        {
+            var strays = new[]
+            {
+                "Fynite.DoStep", "Fynite.WaitStep", "Fynite.PublishStep", "Fynite.WaitForStep",
+                "Fynite.WaitUntilStep", "Fynite.IFyniteActivityStep", "Fynite.FyniteActivityProgram"
+            };
+
+            foreach (var name in strays)
+            {
+                Assert.That(RuntimeAssembly.GetType(name, false), Is.Null, name);
+            }
+
+            var step = RuntimeAssembly.GetType("Fynite.FyniteActivityStep`1", false);
+
+            Assert.That(step.IsValueType, Is.True, "a step became a reference type");
         }
 
         [Test]

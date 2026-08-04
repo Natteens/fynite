@@ -1,3 +1,5 @@
+using System;
+
 namespace Fynite
 {
     /// <summary>
@@ -6,38 +8,49 @@ namespace Fynite
     /// side by side: everything is allocated by <c>Build()</c>, and running, resetting and cancelling
     /// only move the cursor.
     /// </summary>
-    internal sealed class FyniteActivityPlan<TContext> : IFyniteEventSink where TContext : class
+    internal sealed class FyniteActivityExecution<TContext> : IFyniteEventSink where TContext : class
     {
         private readonly FyniteActivityStep<TContext>[] steps;
 
         private int cursor;
-        private bool started;
-        private float remaining;
-        private bool signaled;
-        private FyniteEvent listening;
+        private bool stepStarted;
+        private float remainingSeconds;
+        private bool eventReceived;
+        private FyniteEvent listeningSource;
 
-        internal FyniteActivityPlan(FyniteActivityStep<TContext>[] steps) => this.steps = steps;
+        /// <summary>
+        /// Bumped by every reset and cancel. A step runs code that belongs to the game, and that code
+        /// is free to end the machine or leave the state, while the tick it interrupted is still on
+        /// the stack. Comparing this against the value that tick started with is how it notices the
+        /// run it was executing no longer exists, instead of advancing a cursor that was rewound
+        /// underneath it.
+        /// </summary>
+        private int revision;
+
+        internal FyniteActivityExecution(FyniteActivityStep<TContext>[] steps) => this.steps = steps;
 
         /// <summary>
         /// Set by the source a <c>WaitFor</c> step is listening to. It only records that the
         /// occurrence happened; the step finishes on the activity's next tick, never inside
         /// <c>Publish()</c>.
         /// </summary>
-        void IFyniteEventSink.Signal(int slot) => signaled = true;
+        void IFyniteEventSink.Signal(int slot) => eventReceived = true;
 
         /// <summary>Puts the activity back at its first step, dropping any wait in progress.</summary>
         internal void Reset()
         {
-            if (listening != null)
+            revision++;
+
+            if (listeningSource != null)
             {
-                listening.Unsubscribe(this);
-                listening = null;
+                listeningSource.Unsubscribe(this);
+                listeningSource = null;
             }
 
             cursor = 0;
-            started = false;
-            remaining = 0f;
-            signaled = false;
+            stepStarted = false;
+            remainingSeconds = 0f;
+            eventReceived = false;
         }
 
         /// <summary>
@@ -53,6 +66,8 @@ namespace Fynite
         /// </summary>
         internal void Tick(TContext context, float deltaTime)
         {
+            var running = revision;
+
             while (cursor < steps.Length)
             {
                 var step = steps[cursor];
@@ -68,22 +83,22 @@ namespace Fynite
                         break;
 
                     case FyniteActivityStepKind.Wait:
-                        if (!started)
+                        if (!stepStarted)
                         {
-                            started = true;
-                            remaining = step.Seconds;
+                            stepStarted = true;
+                            remainingSeconds = step.Seconds;
                         }
 
-                        if (remaining > 0f)
+                        if (remainingSeconds > 0f)
                         {
-                            remaining -= deltaTime;
-                            if (remaining > 0f)
+                            remainingSeconds -= deltaTime;
+                            if (remainingSeconds > 0f)
                             {
                                 return;
                             }
                         }
 
-                        remaining = 0f;
+                        remainingSeconds = 0f;
                         break;
 
                     case FyniteActivityStepKind.WaitUntil:
@@ -95,26 +110,37 @@ namespace Fynite
                         break;
 
                     case FyniteActivityStepKind.WaitFor:
-                        if (!started)
+                        if (!stepStarted)
                         {
                             // Listening starts here, so anything published earlier is not this wait's.
-                            started = true;
-                            listening = step.Source;
-                            listening.Subscribe(this, cursor);
+                            stepStarted = true;
+                            listeningSource = step.Source;
+                            listeningSource.Subscribe(this, cursor);
                         }
 
-                        if (!signaled)
+                        if (!eventReceived)
                         {
                             return;
                         }
 
-                        listening.Unsubscribe(this);
-                        listening = null;
-                        signaled = false;
+                        listeningSource.Unsubscribe(this);
+                        listeningSource = null;
+                        eventReceived = false;
                         break;
+
+                    default:
+                        throw new InvalidOperationException(
+                            $"Fynite: unsupported activity step '{step.Kind}'.");
                 }
 
-                started = false;
+                if (revision != running)
+                {
+                    // The step ended this run. Neither the cursor nor the wait belongs to it any more,
+                    // so the steps after it are none of this tick's business.
+                    return;
+                }
+
+                stepStarted = false;
                 cursor++;
             }
         }

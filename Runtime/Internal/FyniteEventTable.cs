@@ -2,8 +2,7 @@ namespace Fynite
 {
     /// <summary>
     /// The event transitions of a machine, compiled once and keyed by the slot of the source that was
-    /// published. Same packing as the predicate table, and the same reason for keeping the start and
-    /// count arrays next to the array they index.
+    /// published. Packed exactly like <see cref="FynitePredicateTable{TContext}"/>.
     /// </summary>
     internal sealed class FyniteEventTable
     {

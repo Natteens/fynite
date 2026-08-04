@@ -8,11 +8,15 @@ namespace FyniteSamples.CodeFirst
         {
             transitions
                 .From<IdleState, WalkState>()
-                .When<HasMovement>();
+                .When(HasMovement);
 
             transitions
                 .From<WalkState, IdleState>()
-                .When<HasNoMovement>();
+                .When(HasNoMovement);
         }
+
+        private static bool HasMovement(ExampleContext context) => context.Input.HasMovement;
+
+        private static bool HasNoMovement(ExampleContext context) => !HasMovement(context);
     }
 }

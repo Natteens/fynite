@@ -2,8 +2,7 @@ namespace Fynite
 {
     /// <summary>
     /// The predicate transitions of a machine, compiled once. The local ones are packed per state, so
-    /// the start and count arrays only make sense together with the array they index — which is why
-    /// they live here and nowhere else.
+    /// the start and count arrays only mean anything together with the array they index.
     /// </summary>
     internal sealed class FynitePredicateTable<TContext> where TContext : class
     {

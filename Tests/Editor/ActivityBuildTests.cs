@@ -154,6 +154,24 @@ namespace FyniteTests
             Assert.That(Context.Trace, Is.EqualTo("ImmediateProbe.Enter"), "a step ran during Build()");
         }
 
+        /// <summary>
+        /// A state that declares nothing costs nothing: no draft list, and no compiled chain for the
+        /// state to tick.
+        /// </summary>
+        [Test]
+        public void AStateThatDeclaresNoStepBuildsNoDraftList()
+        {
+            var builder = new FyniteActivityBuilder<ProbeContext>(typeof(IdleProbe));
+
+            Assert.That(builder.HasDrafts, Is.False);
+            Assert.That(builder.Compile(Context), Is.Null);
+
+            builder.Do(context => context.Mark("Begin"));
+
+            Assert.That(builder.HasDrafts, Is.True);
+            Assert.That(builder.Compile(Context), Is.Not.Null);
+        }
+
         private sealed class MissingWaitForModule : IFyniteTransitions<ProbeContext>
         {
             public void Configure(FyniteTransitions<ProbeContext> transitions)

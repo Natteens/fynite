@@ -99,28 +99,46 @@ namespace Fynite
             var stateCount = states.Count;
             var types = stateTypes.ToArray();
             var layout = hierarchy.Compile(stateCount, types);
+
+            var predicates = CompilePredicates(stateCount);
+
+            var slots = new int[events.Count];
+            var sources = ResolveEventSources(context, slots);
+
+            return new FyniteDefinition<TContext>(
+                states.ToArray(),
+                types,
+                layout,
+                predicates,
+                CompileEvents(stateCount, slots),
+                sources);
+        }
+
+        /// <summary>
+        /// Packs the declared transitions into the rules that apply everywhere and one run per state,
+        /// both in declaration order, so matching a state walks its own slice and nothing else.
+        /// </summary>
+        private FynitePredicateTable<TContext> CompilePredicates(int stateCount)
+        {
+            var localCount = new int[stateCount];
             var globalCount = 0;
+
             for (var i = 0; i < records.Count; i++)
             {
-                if (records[i].From == AnyState)
+                var from = records[i].From;
+                if (from == AnyState)
                 {
                     globalCount++;
+                }
+                else
+                {
+                    localCount[from]++;
                 }
             }
 
             var global = new FyniteTransitionRecord<TContext>[globalCount];
             var local = new FyniteTransitionRecord<TContext>[records.Count - globalCount];
             var localStart = new int[stateCount];
-            var localCount = new int[stateCount];
-
-            for (var i = 0; i < records.Count; i++)
-            {
-                var from = records[i].From;
-                if (from != AnyState)
-                {
-                    localCount[from]++;
-                }
-            }
 
             var offset = 0;
             for (var i = 0; i < stateCount; i++)
@@ -131,6 +149,7 @@ namespace Fynite
 
             var globalCursor = 0;
             var cursors = new int[stateCount];
+
             for (var i = 0; i < records.Count; i++)
             {
                 var record = records[i];
@@ -143,37 +162,45 @@ namespace Fynite
                 local[localStart[record.From] + cursors[record.From]++] = record;
             }
 
-            var slots = new int[events.Count];
-            var sources = ResolveEventSources(context, slots);
+            return new FynitePredicateTable<TContext>(global, local, localStart, localCount);
+        }
 
-            var globalEventCount = 0;
-            var localEventCount = new int[stateCount];
+        /// <summary>
+        /// The same packing for the event transitions. <paramref name="slots"/> carries the
+        /// subscription slot each declared transition resolved to.
+        /// </summary>
+        private FyniteEventTable CompileEvents(int stateCount, int[] slots)
+        {
+            var localCount = new int[stateCount];
+            var globalCount = 0;
+
             for (var i = 0; i < events.Count; i++)
             {
-                var eventFrom = events[i].From;
-                if (eventFrom == AnyState)
+                var from = events[i].From;
+                if (from == AnyState)
                 {
-                    globalEventCount++;
+                    globalCount++;
                 }
                 else
                 {
-                    localEventCount[eventFrom]++;
+                    localCount[from]++;
                 }
             }
 
-            var globalEvents = new FyniteEventRecord[globalEventCount];
-            var localEvents = new FyniteEventRecord[events.Count - globalEventCount];
-            var localEventStart = new int[stateCount];
+            var global = new FyniteEventRecord[globalCount];
+            var local = new FyniteEventRecord[events.Count - globalCount];
+            var localStart = new int[stateCount];
 
-            offset = 0;
+            var offset = 0;
             for (var i = 0; i < stateCount; i++)
             {
-                localEventStart[i] = offset;
-                offset += localEventCount[i];
+                localStart[i] = offset;
+                offset += localCount[i];
             }
 
-            globalCursor = 0;
-            var eventCursors = new int[stateCount];
+            var globalCursor = 0;
+            var cursors = new int[stateCount];
+
             for (var i = 0; i < events.Count; i++)
             {
                 var binding = events[i];
@@ -181,20 +208,14 @@ namespace Fynite
 
                 if (record.From == AnyState)
                 {
-                    globalEvents[globalCursor++] = record;
+                    global[globalCursor++] = record;
                     continue;
                 }
 
-                localEvents[localEventStart[record.From] + eventCursors[record.From]++] = record;
+                local[localStart[record.From] + cursors[record.From]++] = record;
             }
 
-            return new FyniteDefinition<TContext>(
-                states.ToArray(),
-                types,
-                layout,
-                new FynitePredicateTable<TContext>(global, local, localStart, localCount),
-                new FyniteEventTable(globalEvents, localEvents, localEventStart, localEventCount),
-                sources);
+            return new FyniteEventTable(global, local, localStart, localCount);
         }
 
         /// <summary>

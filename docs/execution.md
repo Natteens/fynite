@@ -29,6 +29,10 @@ runs the state that ended up active, so a transition and the target's first `Upd
 same frame. `FixedUpdate` never resolves transitions and never consumes events. `Exit` always pairs
 with the `Enter` that preceded it, including on the way out through `Dispose`.
 
+A state is taken off the active path before its `Exit` runs, so a state that asks the machine about
+itself from inside `Exit` is told what remains, not what is going: a child sees the parent that
+stayed, and the top level state sees `CurrentStateType` as `null` with `ActiveStateCount` at `0`.
+
 ## Transition order
 
 An update starts with the events published since the previous one, in the order they were published,

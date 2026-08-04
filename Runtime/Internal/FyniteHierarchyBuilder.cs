@@ -6,13 +6,11 @@ namespace Fynite
 {
     internal sealed class FyniteHierarchyBuilder
     {
-        private readonly List<int> relationParent = new List<int>();
-        private readonly List<Type> relationParentType = new List<Type>();
-        private readonly List<int> relationChild = new List<int>();
-        private readonly Dictionary<int, int> relationByChild = new Dictionary<int, int>();
+        private readonly List<HierarchyRelation> relations = new List<HierarchyRelation>();
+        private readonly List<InitialChildOverride> overrides = new List<InitialChildOverride>();
 
-        private readonly List<int> overrideParent = new List<int>();
-        private readonly List<int> overrideChild = new List<int>();
+        /// <summary>Finds the relation a child already has, which is the one that can conflict.</summary>
+        private readonly Dictionary<int, int> relationByChild = new Dictionary<int, int>();
 
         internal void Relate(int parentIndex, Type parentType, int childIndex, Type childType)
         {
@@ -24,27 +22,23 @@ namespace Fynite
 
             if (relationByChild.TryGetValue(childIndex, out var slot))
             {
-                if (relationParent[slot] == parentIndex)
+                var declared = relations[slot];
+                if (declared.Parent == parentIndex)
                 {
                     return;
                 }
 
                 throw new InvalidOperationException(
                     $"Fynite: '{childType.Name}' cannot be a child of both " +
-                    $"'{relationParentType[slot].Name}' and '{parentType.Name}'.");
+                    $"'{declared.ParentType.Name}' and '{parentType.Name}'.");
             }
 
-            relationByChild.Add(childIndex, relationChild.Count);
-            relationParent.Add(parentIndex);
-            relationParentType.Add(parentType);
-            relationChild.Add(childIndex);
+            relationByChild.Add(childIndex, relations.Count);
+            relations.Add(new HierarchyRelation(parentIndex, parentType, childIndex));
         }
 
         internal void SetInitialChild(int parentIndex, int childIndex)
-        {
-            overrideParent.Add(parentIndex);
-            overrideChild.Add(childIndex);
-        }
+            => overrides.Add(new InitialChildOverride(parentIndex, childIndex));
 
         internal FyniteHierarchy Compile(int stateCount, Type[] stateTypes)
         {
@@ -58,23 +52,26 @@ namespace Fynite
                 initialChild[i] = -1;
             }
 
-            for (var i = 0; i < relationChild.Count; i++)
+            for (var i = 0; i < relations.Count; i++)
             {
-                var owner = Validate(relationParent[i], stateCount);
-                var child = Validate(relationChild[i], stateCount);
+                var relation = relations[i];
+                var owner = Validate(relation.Parent, stateCount);
+                var child = Validate(relation.Child, stateCount);
 
                 parent[child] = owner;
 
+                // The first child declared is the one a composite state falls into.
                 if (initialChild[owner] < 0)
                 {
                     initialChild[owner] = child;
                 }
             }
 
-            for (var i = 0; i < overrideChild.Count; i++)
+            for (var i = 0; i < overrides.Count; i++)
             {
-                var owner = Validate(overrideParent[i], stateCount);
-                var child = Validate(overrideChild[i], stateCount);
+                var declared = overrides[i];
+                var owner = Validate(declared.Parent, stateCount);
+                var child = Validate(declared.Child, stateCount);
 
                 if (parent[child] != owner)
                 {
@@ -172,6 +169,36 @@ namespace Fynite
             }
 
             return text.Append(" -> ").Append(stateTypes[entry].Name).ToString();
+        }
+
+        /// <summary>
+        /// One declared parent-child pair. The parent's type travels with it because the "two parents"
+        /// diagnostic has to name the parent that was declared first, long after the fact.
+        /// </summary>
+        private readonly struct HierarchyRelation
+        {
+            internal readonly int Parent;
+            internal readonly Type ParentType;
+            internal readonly int Child;
+
+            internal HierarchyRelation(int parent, Type parentType, int child)
+            {
+                Parent = parent;
+                ParentType = parentType;
+                Child = child;
+            }
+        }
+
+        private readonly struct InitialChildOverride
+        {
+            internal readonly int Parent;
+            internal readonly int Child;
+
+            internal InitialChildOverride(int parent, int child)
+            {
+                Parent = parent;
+                Child = child;
+            }
         }
     }
 }

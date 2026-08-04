@@ -46,6 +46,10 @@ chain finished; it never loops on its own.
 Cancelling stops the remaining steps and stops listening. It does not undo anything, so gameplay
 cleanup stays in `Exit` — the callback that runs whether the chain finished or was cut short.
 
+A step is allowed to be the thing that cancels the chain. If a `Do` disposes the machine, or a
+`WaitUntil` ends it and then answers `true`, the chain stops on that step: the steps after it do not
+run and nothing new is subscribed to.
+
 Activities run on `Update`, never on `FixedUpdate`. A disabled owner freezes them where they are: no
 step runs, no time passes and no condition is asked until the owner comes back. No coroutine, `Task`
 or thread is involved — a chain is an array of steps and a cursor, compiled by `Build()`.

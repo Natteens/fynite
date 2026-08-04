@@ -80,12 +80,18 @@ namespace Fynite
 
         /// <summary>
         /// The deepest active state: the leaf of the active path, or the single active state of a flat
-        /// machine.
+        /// machine. Null once the machine has stopped, and null while the last state runs its
+        /// <c>Exit</c>, because a state leaves the active path before it is told to leave. Asked from
+        /// inside the <c>Exit</c> of a child, it answers the parent that stayed.
         /// </summary>
         public Type CurrentStateType
-            => status == FyniteMachineStatus.Running
-                ? definition.StateTypes[activePath[activeCount - 1]]
-                : null;
+        {
+            get
+            {
+                var count = ActiveStateCount;
+                return count > 0 ? definition.StateTypes[activePath[count - 1]] : null;
+            }
+        }
 
         /// <summary>
         /// How many states are active: the top level one plus every state nested inside it. One for a

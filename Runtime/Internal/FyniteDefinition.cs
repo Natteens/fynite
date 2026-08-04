@@ -3,9 +3,7 @@ using System;
 namespace Fynite
 {
     /// <summary>
-    /// Everything about a machine that is decided at <c>Build()</c> and never changes afterwards. The
-    /// transitions live in their own tables, so the arrays that only mean something together are held
-    /// together instead of arriving here as a row of interchangeable parameters.
+    /// Everything about a machine that is decided at <c>Build()</c> and never changes afterwards.
     /// </summary>
     internal sealed class FyniteDefinition<TContext> where TContext : class
     {

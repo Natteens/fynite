@@ -88,6 +88,31 @@ namespace FyniteTests
                 Is.Not.AllocatingGCMemory());
         }
 
+        /// <summary>
+        /// The check that notices a step cancelled its own run is one integer compare, taken on the
+        /// tick that was interrupted. It must not be the one thing that allocates.
+        /// </summary>
+        [Test]
+        public void TheCancellationCheck_DoesNotAllocate()
+        {
+            FyniteActivityExecution<ProbeContext> execution = null;
+
+            execution = new FyniteActivityExecution<ProbeContext>(new[]
+            {
+                FyniteActivityStep<ProbeContext>.ForDo(context =>
+                {
+                    context.Conditions++;
+                    execution.Cancel();
+                }),
+                FyniteActivityStep<ProbeContext>.ForDo(context => context.Conditions++)
+            });
+
+            execution.Tick(Context, 0.1f);
+
+            Assert.That(() => execution.Tick(Context, 0.1f), Is.Not.AllocatingGCMemory());
+            Assert.That(Context.Conditions, Is.EqualTo(2));
+        }
+
         private sealed class CountingSink : IFyniteEventSink
         {
             public int Signals;

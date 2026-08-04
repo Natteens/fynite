@@ -1,3 +1,5 @@
+using System;
+
 namespace Fynite
 {
     /// <summary>
@@ -27,10 +29,17 @@ namespace Fynite
 
         /// <summary>
         /// Starts listening to every source of the machine. Safe to abandon halfway: <see cref="Close"/>
-        /// removes whatever was subscribed and ignores the rest.
+        /// removes whatever was subscribed and ignores the rest. Opening twice would subscribe the
+        /// same inbox to the same source twice, so it is refused rather than counted.
         /// </summary>
         internal void Open()
         {
+            if (open)
+            {
+                throw new InvalidOperationException(
+                    "Fynite: the event inbox of this machine is already open.");
+            }
+
             open = true;
 
             for (var i = 0; i < sources.Length; i++)
