@@ -84,6 +84,37 @@ namespace Fynite
                 : null;
 
         /// <summary>
+        /// How many states are active: the top level one plus every state nested inside it. One for a
+        /// flat machine, and zero once the machine has stopped for any reason.
+        /// </summary>
+        public int ActiveStateCount => status == FyniteMachineStatus.Running ? activeCount : 0;
+
+        /// <summary>
+        /// The state at <paramref name="index"/> of the active path, from the top level state at 0 down
+        /// to the current one at <c>ActiveStateCount - 1</c>, which is what
+        /// <see cref="CurrentStateType"/> reports. Reads the path where it lives: nothing is copied and
+        /// nothing is allocated.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="index"/> is outside the active path, which includes every index once the
+        /// machine has stopped.
+        /// </exception>
+        public Type GetActiveStateType(int index)
+        {
+            var count = ActiveStateCount;
+
+            if ((uint)index >= (uint)count)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(index),
+                    index,
+                    $"Fynite: the active path holds {count} states.");
+            }
+
+            return definition.StateTypes[activePath[index]];
+        }
+
+        /// <summary>
         /// True for every state on the active path, so a superstate still answers true while one of its
         /// children is the current state.
         /// </summary>

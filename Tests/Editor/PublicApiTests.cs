@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -368,7 +369,7 @@ namespace FyniteTests
         }
 
         [Test]
-        public void TheMachineStillExposesOnlyWhatItAlwaysDid()
+        public void TheMachineExposesExactlyTheseMembers()
         {
             var members = typeof(FyniteMachine<ProbeContext>)
                 .GetMembers(BindingFlags.Public | BindingFlags.Instance |
@@ -383,9 +384,70 @@ namespace FyniteTests
                 {
                     "IsRunning", "get_IsRunning",
                     "CurrentStateType", "get_CurrentStateType",
+                    "ActiveStateCount", "get_ActiveStateCount",
+                    "GetActiveStateType",
                     "IsIn",
                     "Dispose"
                 }));
+        }
+
+        [Test]
+        public void TheActivePathAccessorsHaveTheDeclaredShape()
+        {
+            var machine = typeof(FyniteMachine<ProbeContext>);
+
+            var count = machine.GetProperty("ActiveStateCount");
+            Assert.That(count, Is.Not.Null);
+            Assert.That(count.PropertyType, Is.EqualTo(typeof(int)));
+            Assert.That(count.CanRead, Is.True);
+            Assert.That(count.CanWrite, Is.False, "the count must be read only");
+
+            var get = machine.GetMethod("GetActiveStateType");
+            Assert.That(get, Is.Not.Null);
+            Assert.That(get.ReturnType, Is.EqualTo(typeof(Type)));
+            Assert.That(get.IsGenericMethodDefinition, Is.False);
+
+            var parameters = get.GetParameters();
+            Assert.That(parameters, Has.Length.EqualTo(1));
+            Assert.That(parameters[0].ParameterType, Is.EqualTo(typeof(int)));
+            Assert.That(parameters[0].Name, Is.EqualTo("index"));
+        }
+
+        [Test]
+        public void TheActivePathIsNotExposedAsACollection()
+        {
+            var forbidden = new[]
+            {
+                "ActivePath", "ActiveStates", "StatePath", "CopyActivePath", "TryGetActiveStateType"
+            };
+
+            var offenders = new List<string>();
+
+            foreach (var type in RuntimeAssembly.GetExportedTypes())
+            {
+                foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance |
+                                                       BindingFlags.Static | BindingFlags.DeclaredOnly))
+                {
+                    if (Array.IndexOf(forbidden, member.Name) >= 0)
+                    {
+                        offenders.Add($"{type.FullName}.{member.Name}");
+                    }
+                }
+            }
+
+            Assert.That(offenders, Is.Empty);
+
+            // Nothing public hands out a sequence of states either.
+            var sequences = typeof(FyniteMachine<ProbeContext>)
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Select(method => method.ReturnType)
+                .Concat(typeof(FyniteMachine<ProbeContext>)
+                    .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Select(property => property.PropertyType))
+                .Where(returned => returned != typeof(Type) && typeof(IEnumerable).IsAssignableFrom(returned))
+                .ToArray();
+
+            Assert.That(sequences, Is.Empty, "a public member returns a collection of states");
         }
 
         [Test]

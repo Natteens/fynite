@@ -367,6 +367,30 @@ parent running while restarting its branch.
 
 Hierarchy is opt-in. A machine without a single `Child` call stays flat.
 
+## Inspecting the active path
+
+`CurrentStateType` answers for the deepest state. When you want the whole path — a HUD, a log line,
+an inspector row — read it by index:
+
+```csharp
+for (var i = 0; i < machine.ActiveStateCount; i++)
+{
+    Debug.Log(machine.GetActiveStateType(i).Name);
+}
+```
+
+For a machine sitting in `Grounded → Locomotion → Idle` that prints `Grounded`, `Locomotion`, `Idle`:
+index 0 is the top level state and the last index is the current one, so
+`GetActiveStateType(ActiveStateCount - 1)` is always `CurrentStateType`.
+
+A flat machine has one entry. A machine that has stopped — disposed, owner destroyed, faulted, or
+caught by a PlayerLoop reset — has none: `ActiveStateCount` is `0` and any index throws
+`ArgumentOutOfRangeException`, which matches `CurrentStateType` being `null` and `IsIn<T>()` being
+`false`.
+
+There is no collection behind this. Both members read the path the machine already keeps, so looping
+over it every frame allocates nothing.
+
 ## Installation
 
 Install through the Unity Package Manager using a Git URL. Always pin a published tag: a URL without
@@ -416,6 +440,8 @@ FyniteMachineBuilder<TContext>.Build()
 
 FyniteMachine<TContext>.IsRunning
 FyniteMachine<TContext>.CurrentStateType
+FyniteMachine<TContext>.ActiveStateCount
+FyniteMachine<TContext>.GetActiveStateType(int index)
 FyniteMachine<TContext>.IsIn<TState>()
 FyniteMachine<TContext>.Dispose()
 
