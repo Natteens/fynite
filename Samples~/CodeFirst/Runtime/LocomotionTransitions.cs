@@ -7,13 +7,11 @@ namespace FyniteSamples.CodeFirst
         public void Configure(FyniteTransitions<ExampleContext> transitions)
         {
             transitions
-                .From<IdleState>()
-                .To<WalkState>()
+                .From<IdleState, WalkState>()
                 .When<HasMovement>();
 
             transitions
-                .From<WalkState>()
-                .To<IdleState>()
+                .From<WalkState, IdleState>()
                 .When<HasNoMovement>();
         }
     }

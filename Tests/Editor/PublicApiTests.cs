@@ -302,10 +302,76 @@ namespace FyniteTests
                     .Any(method => method.Name == "When" && method.IsGenericMethodDefinition),
                 Is.True);
 
-            var transitions = typeof(FyniteTransitions<ProbeContext>);
-            Assert.That(transitions.GetMethod("Any"), Is.Not.Null);
-            Assert.That(transitions.GetMethod("From"), Is.Not.Null);
+            // Named by arity, because From and Any now have a one-call form each.
+            var transitions = typeof(FyniteTransitions<ProbeContext>)
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.That(transitions.Any(Named("Any", 0)), Is.True);
+            Assert.That(transitions.Any(Named("From", 1)), Is.True);
+
+            var source = typeof(FyniteTransitionSource<ProbeContext>);
+            Assert.That(source.GetMethod("To"), Is.Not.Null);
         }
+
+        [Test]
+        public void FyniteTransitionsExposesExactlyFourEntryPoints()
+        {
+            var declared = typeof(FyniteTransitions<ProbeContext>)
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance |
+                            BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Select(method => $"{method.Name}<{method.GetGenericArguments().Length}>")
+                .ToArray();
+
+            Assert.That(
+                declared,
+                Is.EquivalentTo(new[] { "From<1>", "From<2>", "Any<0>", "Any<1>" }));
+        }
+
+        [Test]
+        public void TheShorthandsReturnTheSameTargetTheLongFormBuilds()
+        {
+            var methods = typeof(FyniteTransitions<ProbeContext>)
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance);
+
+            var fromPair = methods.Single(Named("From", 2));
+            var anyTarget = methods.Single(Named("Any", 1));
+
+            var target = typeof(FyniteTransitionTarget<ProbeContext>);
+
+            Assert.That(fromPair.ReturnType, Is.EqualTo(target));
+            Assert.That(anyTarget.ReturnType, Is.EqualTo(target));
+            Assert.That(fromPair.GetParameters(), Is.Empty);
+            Assert.That(anyTarget.GetParameters(), Is.Empty);
+
+            // The long form still ends at the very same type, so both share every When and On.
+            Assert.That(
+                typeof(FyniteTransitionSource<ProbeContext>).GetMethod("To").ReturnType,
+                Is.EqualTo(target));
+        }
+
+        [Test]
+        public void ThereAreNoPredicateCombinators()
+        {
+            var forbidden = new[] { "WhenAll", "WhenAny", "WhenNot", "Unless", "And", "Or", "Not" };
+            var offenders = new List<string>();
+
+            foreach (var type in RuntimeAssembly.GetExportedTypes())
+            {
+                foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance |
+                                                       BindingFlags.Static | BindingFlags.DeclaredOnly))
+                {
+                    if (Array.IndexOf(forbidden, member.Name) >= 0)
+                    {
+                        offenders.Add($"{type.FullName}.{member.Name}");
+                    }
+                }
+            }
+
+            Assert.That(offenders, Is.Empty);
+        }
+
+        private static Func<MethodInfo, bool> Named(string name, int arity)
+            => method => method.Name == name && method.GetGenericArguments().Length == arity;
 
         [Test]
         public void ThereIsNoAmbiguityDiagnosticsSwitch()

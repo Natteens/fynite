@@ -79,3 +79,6 @@ use. None of them knows which state comes next.
 `Grounded` and `Airborne` with `On(...)`, pointing straight at `JumpRequested` and `Landed`, and
 `ActionTransitions` does the same for `ActionRequested` and `ActionFinished`. Because `Grounded` is
 the parent, its rules to leave cover both children without being written twice.
+
+All three name the two ends of a rule in one call, as in `From<IdleState, WalkState>()`. The longer
+`From<IdleState>().To<WalkState>()` builds exactly the same transition.

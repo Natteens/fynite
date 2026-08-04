@@ -25,8 +25,24 @@ namespace Fynite
             where TState : FyniteState<TContext>, new()
             => new FyniteTransitionSource<TContext>(this, Register<TState>());
 
+        /// <summary>
+        /// The two states of a transition in one call, for when naming them apart adds nothing.
+        /// Identical to <c>From&lt;TFrom&gt;().To&lt;TTo&gt;()</c>.
+        /// </summary>
+        public FyniteTransitionTarget<TContext> From<TFrom, TTo>()
+            where TFrom : FyniteState<TContext>, new()
+            where TTo : FyniteState<TContext>, new()
+            => new FyniteTransitionTarget<TContext>(this, Register<TFrom>(), Register<TTo>());
+
         public FyniteTransitionSource<TContext> Any()
             => new FyniteTransitionSource<TContext>(this, AnyState);
+
+        /// <summary>
+        /// A transition out of every state, in one call. Identical to <c>Any().To&lt;TTo&gt;()</c>.
+        /// </summary>
+        public FyniteTransitionTarget<TContext> Any<TTo>()
+            where TTo : FyniteState<TContext>, new()
+            => new FyniteTransitionTarget<TContext>(this, AnyState, Register<TTo>());
 
         internal int Register<TState>() where TState : FyniteState<TContext>, new()
         {

@@ -11,13 +11,11 @@ namespace FyniteSamples.CodeFirst
         public void Configure(FyniteTransitions<ExampleContext> transitions)
         {
             transitions
-                .From<GroundedState>()
-                .To<ActionState>()
+                .From<GroundedState, ActionState>()
                 .On(context => context.Input.ActionRequested);
 
             transitions
-                .From<ActionState>()
-                .To<GroundedState>()
+                .From<ActionState, GroundedState>()
                 .On(context => context.ActionFinished);
         }
     }

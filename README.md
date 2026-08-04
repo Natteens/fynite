@@ -73,16 +73,25 @@ public sealed class LocomotionTransitions : IFyniteTransitions<PlayerContext>
     public void Configure(FyniteTransitions<PlayerContext> transitions)
     {
         transitions
-            .From<IdleState>()
-            .To<WalkState>()
+            .From<IdleState, WalkState>()
             .When<HasMovement>();
 
         transitions
-            .From<WalkState>()
-            .To<IdleState>()
+            .From<WalkState, IdleState>()
             .When<HasNoMovement>();
     }
 }
+```
+
+`From<TFrom, TTo>()` names both ends of the transition in one call. The explicit form is still there
+and does exactly the same thing, which is worth reaching for when the two states deserve their own
+lines:
+
+```csharp
+transitions
+    .From<IdleState>()
+    .To<WalkState>()
+    .When<HasMovement>();
 ```
 
 Every state named by `Start<T>()`, `From<T>()` or `To<T>()` is registered automatically, and each
@@ -102,9 +111,16 @@ condition deserves a name, or pass a lambda to `When` when it does not:
 
 ```csharp
 transitions
-    .From<IdleState>()
-    .To<WalkState>()
+    .From<IdleState, WalkState>()
     .When(context => context.Input.HasMovement);
+```
+
+Conditions are combined with plain C#, so there is nothing extra to learn:
+
+```csharp
+transitions
+    .From<IdleState, WalkState>()
+    .When(context => context.Input.HasMovement && context.Movement.IsGrounded);
 ```
 
 An **event** is the other half: something that happened, rather than something that is true. See
@@ -148,14 +164,13 @@ through the context:
 
 ```csharp
 transitions
-    .Any()
-    .To<PlayerStateHit>()
+    .Any<PlayerStateHit>()
     .On(context => context.Health.Damaged);
 ```
 
-`From<TState>()` works the same way when the rule only applies to one state. The lambda does not
-have to be `static`; it runs exactly once, during `Build()`, and the machine keeps the instance it
-returned.
+`Any<TTo>()` is `Any().To<TTo>()` written in one call, and `From<TFrom, TTo>()` does the same for a
+rule that only applies to one state. The lambda does not have to be `static`; it runs exactly once,
+during `Build()`, and the machine keeps the instance it returned.
 
 The controller stays out of it. It builds the machine and stops there — there is nothing to forward,
 no handler to register and nothing to unregister:
@@ -238,8 +253,7 @@ happened, and a transition module decides what that means:
 
 ```csharp
 transitions
-    .From<AttackState>()
-    .To<LocomotionState>()
+    .From<AttackState, LocomotionState>()
     .On(context => context.AttackCompleted);
 ```
 
@@ -407,6 +421,12 @@ FyniteActivityBuilder<TContext>.Wait(seconds)
 FyniteActivityBuilder<TContext>.WaitUntil(context => ...)
 FyniteActivityBuilder<TContext>.WaitFor(context => ...)
 FyniteActivityBuilder<TContext>.Publish(context => ...)
+
+FyniteTransitions<TContext>.From<TFrom, TTo>()
+FyniteTransitions<TContext>.Any<TTo>()
+    .When<TPredicate>()
+    .When(context => ...)
+    .On(context => ...)
 
 FyniteTransitions<TContext>.From<TState>()
 FyniteTransitions<TContext>.Any()
