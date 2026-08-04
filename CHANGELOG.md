@@ -1,3 +1,10 @@
+## [0.12.1](https://github.com/Natteens/fynite/compare/v0.12.0...v0.12.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* Harden loop shutdown and build lifecycle ([8c15343](https://github.com/Natteens/fynite/commit/8c15343234529e7b8af44e6e6dad870983f5c613))
+
 # [0.12.0](https://github.com/Natteens/fynite/compare/v0.11.0...v0.12.0) (2026-08-04)
 
 
